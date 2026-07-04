@@ -19,7 +19,7 @@ Never put logic in `cli/` or `api/`.
 core/review_service.py   — orchestrates full PR review
 core/ingest_service.py   — orchestrates ingestion flow
 
-github/     — fetch PRs, issues, commits via PyGitHub
+gh/         — fetch PRs, issues, commits via PyGitHub (renamed from github/ to avoid shadowing PyGitHub's namespace)
 ingestion/  — LlamaIndex loaders + ChromaDB embedding
 retrieval/  — query ChromaDB for PR context
 agents/     — LangGraph agents (security, quality, test, summarizer)
