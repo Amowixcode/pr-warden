@@ -58,7 +58,9 @@ async def test_ingest_repository_returns_correct_counts() -> None:
 
 
 async def test_ingest_repository_empty_repo() -> None:
-    mocks = _make_patches(n_issues=0, n_prs=0, n_commits=0, index_issues=0, index_prs=0, index_commits=0)
+    mocks = _make_patches(
+        n_issues=0, n_prs=0, n_commits=0, index_issues=0, index_prs=0, index_commits=0
+    )
 
     with (
         patch(_PATCH.format("fetch_issues"), mocks["fetch_issues"]),
@@ -80,7 +82,9 @@ async def test_ingest_repository_empty_repo() -> None:
 
 async def test_ingest_repository_partial_deduplication() -> None:
     # Repo has data but some already indexed — counts reflect only newly indexed.
-    mocks = _make_patches(n_issues=5, n_prs=4, n_commits=10, index_issues=1, index_prs=0, index_commits=3)
+    mocks = _make_patches(
+        n_issues=5, n_prs=4, n_commits=10, index_issues=1, index_prs=0, index_commits=3
+    )
 
     with (
         patch(_PATCH.format("fetch_issues"), mocks["fetch_issues"]),
@@ -119,7 +123,9 @@ async def test_ingest_repository_fetches_in_parallel() -> None:
         call_order.append("commits")
         return []
 
-    mocks = _make_patches(n_issues=0, n_prs=0, n_commits=0, index_issues=0, index_prs=0, index_commits=0)
+    mocks = _make_patches(
+        n_issues=0, n_prs=0, n_commits=0, index_issues=0, index_prs=0, index_commits=0
+    )
 
     with (
         patch(_PATCH.format("fetch_issues"), side_effect=_fetch_issues),
