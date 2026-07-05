@@ -69,6 +69,18 @@ This is non-negotiable. The git history must be 100% the user's own work.
 - Branch off `dev`, merge back to `dev` via PR
 - `main` receives merges from `dev` only at milestone completion
 
+## Code quality
+
+Before considering any task done, run and fix all errors from:
+
+```bash
+uv run ruff check .    # lint — fix all reported errors
+uv run ruff format .   # format — must produce no changes
+uv run pytest          # tests — all must pass
+```
+
+All three must exit cleanly with no errors before handing work back to the user.
+
 ## Code style
 
 - Type hints on all functions
