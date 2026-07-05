@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import chromadb
 import pytest
-from llama_index.core.embeddings.mock_embed_model import MockEmbedding
 from llama_index.core import VectorStoreIndex
+from llama_index.core.embeddings.mock_embed_model import MockEmbedding
 
 from gh.repo_fetcher import CommitData
 from ingestion.github_loader import commits_to_documents
-from ingestion.vector_store import build_chroma_collection, build_vector_store_index, index_documents
+from ingestion.vector_store import (
+    build_chroma_collection,
+    build_vector_store_index,
+    index_documents,
+)
 
-_NOW = datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_commit(sha: str = "a" * 40) -> CommitData:

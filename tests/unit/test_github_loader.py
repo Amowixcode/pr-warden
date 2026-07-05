@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from gh.repo_fetcher import CommitData, IssueData, MergedPRData
 from ingestion.github_loader import (
@@ -9,8 +9,8 @@ from ingestion.github_loader import (
     merged_prs_to_documents,
 )
 
-_NOW = datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
-_THEN = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+_THEN = datetime(2024, 5, 1, 12, 0, 0, tzinfo=UTC)
 OWNER = "acme"
 REPO = "backend"
 
