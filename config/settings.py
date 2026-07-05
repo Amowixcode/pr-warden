@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     github_token: str
     gemini_api_key: str
+    chroma_persist_dir: str = "./data/chroma"
+    chroma_collection_name: str = "pr_warden"
 
 
 settings: Settings = Settings()
