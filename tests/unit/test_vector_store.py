@@ -57,7 +57,9 @@ def test_build_chroma_collection_uses_settings_defaults():
 
         result = build_chroma_collection()
         mock_pc.assert_called_once_with(path=settings.chroma_persist_dir)
-        mock_client.get_or_create_collection.assert_called_once_with(settings.chroma_collection_name)
+        mock_client.get_or_create_collection.assert_called_once_with(
+            settings.chroma_collection_name
+        )
         assert result is mock_collection
 
 
