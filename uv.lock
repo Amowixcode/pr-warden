@@ -853,6 +853,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e8/1d/f6d3ca1ad0725f2e08a1c6915640748a52de2e66596160a4d53b010cccf0/google_auth-2.55.1-py3-none-any.whl", hash = "sha256:eada68dfd52b3b81191827601e2a0c3fa12540c818534b630ddc5355769c3995", size = 252349, upload-time = "2026-06-25T23:38:52.946Z" },
 ]
 
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
+]
+
 [[package]]
 name = "google-auth-httplib2"
 version = "0.4.0"
@@ -864,6 +869,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/b3/f192c8bc7e41e0ebdbd95afcae4783417a34b6a6af62d22daf22c3fd38fc/google_auth_httplib2-0.4.0.tar.gz", hash = "sha256:d5b030a204b7a4b4d553ba9ca701b62481ee2b74419325580be70f7d85ffed35", size = 11161, upload-time = "2026-05-07T08:03:46.878Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/be/954c35a62b9e31de66b0a43c225c9b6bb9e0f98d6b1dc110a2308e3644f5/google_auth_httplib2-0.4.0-py3-none-any.whl", hash = "sha256:8e55cfafa3358cba85f6cad4a886138e88e158d71e7e5c9ee5936a5c1507fb91", size = 9529, upload-time = "2026-05-07T08:02:12.375Z" },
+]
+
+[[package]]
+name = "google-genai"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "google-auth", extra = ["requests"] },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "sniffio" },
+    { name = "tenacity" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cd/fe/b796087493c3c55371aa58b9f264841ace5bfdf8c668cafa7afa33c44bec/google_genai-2.10.0.tar.gz", hash = "sha256:77912cd558cd7dfd5b75c25fd1c609e78d7954dde583331104022a46ea90f9ee", size = 600039, upload-time = "2026-06-24T01:33:18.157Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/39/00bcfd94de255d24249401efff4f48d77bf6066b46447e519fa193c0c299/google_genai-2.10.0-py3-none-any.whl", hash = "sha256:d5350311567ae660c24cbc1752aee4b3d660f89c0106d2dcd2a69978c35afe1e", size = 957974, upload-time = "2026-06-24T01:33:16.296Z" },
 ]
 
 [[package]]
@@ -1491,16 +1517,16 @@ wheels = [
 ]
 
 [[package]]
-name = "llama-index-embeddings-google"
-version = "0.4.2"
+name = "llama-index-embeddings-google-genai"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "google-generativeai" },
+    { name = "google-genai" },
     { name = "llama-index-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/24/b2/8d9677aa25e41b2057b2e0ae136f9b246371537f061dd8cc931d7e87ee88/llama_index_embeddings_google-0.4.2.tar.gz", hash = "sha256:7565767cab9d2ecc5fa474c6ac696330153adaf614ab37fc35aad0dcd97da682", size = 4761, upload-time = "2026-01-22T11:07:30.363Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/46/3feca634e00f138c8a794dbe0f2ac5c7c1dcbf16fe810418d6c97a7ff9d7/llama_index_embeddings_google_genai-0.5.1.tar.gz", hash = "sha256:c40d09eb9b981949db59a361d3227453c22e98e9e18d35c72bd264967bddd944", size = 5964, upload-time = "2026-05-19T09:44:40.109Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/8a/bed2f234e39fd6b5551c12e764bc674f3885f8d5d29522b7805d7396745b/llama_index_embeddings_google-0.4.2-py3-none-any.whl", hash = "sha256:3fce9ed1f71961fa274a5b0e8863dc64a124939fcea0bbb6d3c25d76daa717ee", size = 6066, upload-time = "2026-01-22T11:07:29.57Z" },
+    { url = "https://files.pythonhosted.org/packages/85/fe/7550ced551cd9bdbef5e2135319ce9240c9663a66a0c3d011799e946cdb7/llama_index_embeddings_google_genai-0.5.1-py3-none-any.whl", hash = "sha256:e2332c462a5367101f1ed0dba6cadcfb06f329c8bf4385565ae3b3362e3d2c4b", size = 5725, upload-time = "2026-05-19T09:44:39.269Z" },
 ]
 
 [[package]]
@@ -2406,7 +2432,7 @@ dependencies = [
     { name = "google-generativeai" },
     { name = "langgraph" },
     { name = "llama-index-core" },
-    { name = "llama-index-embeddings-google" },
+    { name = "llama-index-embeddings-google-genai" },
     { name = "llama-index-vector-stores-chroma" },
     { name = "pydantic-settings" },
     { name = "pygithub" },
@@ -2427,7 +2453,7 @@ requires-dist = [
     { name = "google-generativeai" },
     { name = "langgraph" },
     { name = "llama-index-core" },
-    { name = "llama-index-embeddings-google" },
+    { name = "llama-index-embeddings-google-genai" },
     { name = "llama-index-vector-stores-chroma" },
     { name = "pydantic-settings" },
     { name = "pygithub" },
