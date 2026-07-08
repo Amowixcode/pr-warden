@@ -14,7 +14,7 @@ from ingestion.embedder import get_embed_model
 from ingestion.vector_store import build_chroma_collection, build_vector_store_index
 from retrieval.context_builder import PRContext, build_pr_context
 
-_GEMINI_MODEL = "gemini-1.5-flash"
+_GEMINI_MODEL = "gemini-3.5-flash"
 
 
 @dataclass

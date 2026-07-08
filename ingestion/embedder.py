@@ -5,7 +5,7 @@ from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 
 from config.settings import settings
 
-_DEFAULT_MODEL = "models/gemini-embedding-001"
+_DEFAULT_MODEL = "models/gemini-embedding-2"
 
 
 def get_embed_model(model_name: str = _DEFAULT_MODEL) -> BaseEmbedding:
@@ -17,7 +17,7 @@ def get_embed_model(model_name: str = _DEFAULT_MODEL) -> BaseEmbedding:
 
     Args:
         model_name: Gemini embedding model identifier. Defaults to
-            ``"models/gemini-embedding-001"`` (3072 dimensions by default;
+            ``"models/gemini-embedding-2"`` (3072 dimensions by default;
             pass ``output_dimensionality`` via ``embedding_config`` to shrink it).
 
     Returns:
