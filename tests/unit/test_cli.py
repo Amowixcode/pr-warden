@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 import typer
 from github import GithubException
+from openai import OpenAIError
 from typer.testing import CliRunner
 
 from cli.main import _parse_repo, app
@@ -85,6 +86,17 @@ def test_ingest_github_exception_no_traceback(monkeypatch: pytest.MonkeyPatch) -
 
     assert result.exit_code == 1
     assert "GitHub API error" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_review_openai_exception_no_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(side_effect=OpenAIError("rate limited"))
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "1"])
+
+    assert result.exit_code == 1
+    assert "OpenAI API error" in result.output
     assert "Traceback" not in result.output
 
 

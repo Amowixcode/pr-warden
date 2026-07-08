@@ -60,14 +60,14 @@ def _make_context(
     )
 
 
-def _make_patches(pr: PRData, context: PRContext, gemini_json: str = _VALID_JSON) -> dict:
+def _make_patches(pr: PRData, context: PRContext, openai_json: str = _VALID_JSON) -> dict:
     return {
         "fetch_pull_request": AsyncMock(return_value=pr),
         "build_pr_context": AsyncMock(return_value=context),
         "build_chroma_collection": MagicMock(return_value=MagicMock()),
         "build_vector_store_index": MagicMock(return_value=MagicMock()),
         "get_embed_model": MagicMock(return_value=MagicMock()),
-        "_call_gemini": MagicMock(return_value=gemini_json),
+        "_call_openai": MagicMock(return_value=openai_json),
         "GitHubClient": MagicMock(),
     }
 
@@ -79,7 +79,7 @@ def _apply(mocks: dict):
         patch(_PATCH.format("build_chroma_collection"), mocks["build_chroma_collection"]),
         patch(_PATCH.format("build_vector_store_index"), mocks["build_vector_store_index"]),
         patch(_PATCH.format("get_embed_model"), mocks["get_embed_model"]),
-        patch(_PATCH.format("_call_gemini"), mocks["_call_gemini"]),
+        patch(_PATCH.format("_call_openai"), mocks["_call_openai"]),
         patch(_PATCH.format("GitHubClient"), mocks["GitHubClient"]),
     )
 
@@ -123,7 +123,7 @@ async def test_review_pr_pr_number_matches_input() -> None:
     assert result.pr_number == 42
 
 
-async def test_review_pr_fields_from_gemini_json() -> None:
+async def test_review_pr_fields_from_openai_json() -> None:
     pr = _make_pr()
     mocks = _make_patches(pr, _make_context())
 
@@ -159,7 +159,7 @@ async def test_review_pr_prompt_contains_title() -> None:
     ):
         await review_pr("owner", "repo", 7)
 
-    prompt = mocks["_call_gemini"].call_args.args[0]
+    prompt = mocks["_call_openai"].call_args.args[0]
     assert "Unique PR title XYZ" in prompt
 
 
@@ -178,7 +178,7 @@ async def test_review_pr_prompt_contains_diff() -> None:
     ):
         await review_pr("owner", "repo", 7)
 
-    prompt = mocks["_call_gemini"].call_args.args[0]
+    prompt = mocks["_call_openai"].call_args.args[0]
     assert "unique-diff-marker-abc123" in prompt
 
 

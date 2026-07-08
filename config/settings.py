@@ -8,10 +8,11 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     github_token: str
-    gemini_api_key: str
+    openai_api_key: str
     chroma_persist_dir: str = "./data/chroma"
     chroma_collection_name: str = "pr_warden"
 

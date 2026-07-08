@@ -7,7 +7,7 @@ from typing import Annotated, Any, NoReturn, TypeVar
 
 import typer
 from github import GithubException
-from google.api_core.exceptions import GoogleAPIError
+from openai import OpenAIError
 from pydantic import ValidationError
 from rich.console import Console
 from rich.panel import Panel
@@ -45,8 +45,8 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
         _fail(f"GitHub API error ({e.status}): {detail}")
     except (json.JSONDecodeError, KeyError) as e:
         _fail(f"failed to parse the AI review response: {e}")
-    except GoogleAPIError as e:
-        _fail(f"Gemini API error: {e}")
+    except OpenAIError as e:
+        _fail(f"OpenAI API error: {e}")
     except Exception as e:  # no custom exception hierarchy exists in core yet
         _fail(f"unexpected error: {e}")
 
@@ -94,7 +94,7 @@ def review(
     repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
     pr_number: Annotated[int, typer.Argument(help="Pull request number to review", min=1)],
 ) -> None:
-    """Review a pull request using historical repo context and Gemini."""
+    """Review a pull request using historical repo context and OpenAI."""
     owner, name = _parse_repo(repo)
     from core.review_service import review_pr  # lazy, same reasoning as ingest
 
