@@ -5,6 +5,9 @@ import asyncio
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import NodeWithScore
 from llama_index.core.vector_stores import MetadataFilter, MetadataFilters
+from openai import OpenAIError
+
+from core.exceptions import VectorStoreError
 
 
 async def retrieve(
@@ -35,4 +38,9 @@ async def retrieve(
         ]
     )
     retriever = index.as_retriever(similarity_top_k=top_k, filters=filters)
-    return await asyncio.to_thread(retriever.retrieve, query_text)
+    try:
+        return await asyncio.to_thread(retriever.retrieve, query_text)
+    except OpenAIError:
+        raise
+    except Exception as e:
+        raise VectorStoreError(f"failed to query ChromaDB: {e}") from e

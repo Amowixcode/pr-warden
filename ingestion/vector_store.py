@@ -8,8 +8,10 @@ from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.schema import Document
 from llama_index.vector_stores.chroma import ChromaVectorStore
+from openai import OpenAIError
 
 from config.settings import settings
+from core.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +36,13 @@ def build_chroma_collection(
     """
     resolved_dir = persist_dir or settings.chroma_persist_dir
     resolved_name = collection_name or settings.chroma_collection_name
-    client = chromadb.PersistentClient(path=resolved_dir)
-    return client.get_or_create_collection(resolved_name)
+    try:
+        client = chromadb.PersistentClient(path=resolved_dir)
+        return client.get_or_create_collection(resolved_name)
+    except Exception as e:
+        raise VectorStoreError(
+            f"failed to open ChromaDB collection at {resolved_dir!r}: {e}"
+        ) from e
 
 
 def build_vector_store_index(
@@ -87,9 +94,20 @@ async def index_documents(
     newly_indexed = 0
     for doc in documents:
         source_id = doc.metadata.get("source_doc_id", doc.id_)
-        existing = collection.get(where={"source_doc_id": {"$eq": source_id}})
+        try:
+            existing = collection.get(where={"source_doc_id": {"$eq": source_id}})
+        except Exception as e:
+            raise VectorStoreError(
+                f"failed to query ChromaDB for document {source_id!r}: {e}"
+            ) from e
+
         if not existing["ids"]:
-            await asyncio.to_thread(index.insert, doc)
+            try:
+                await asyncio.to_thread(index.insert, doc)
+            except OpenAIError:
+                raise
+            except Exception as e:
+                raise VectorStoreError(f"failed to index document {source_id!r}: {e}") from e
             newly_indexed += 1
             logger.debug("Indexed document %s", doc.id_)
         else:

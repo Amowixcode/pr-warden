@@ -222,6 +222,24 @@ def test_build_prompt_empty_context_renders_none() -> None:
     assert prompt.count("(none)") == 3
 
 
+# ── _call_openai ─────────────────────────────────────────────────────────────
+
+
+def test_call_openai_uses_configured_max_retries() -> None:
+    from config.settings import settings
+    from core.review_service import _call_openai
+
+    mock_client = MagicMock()
+    mock_client.responses.create.return_value = MagicMock(output_text="ok")
+
+    with patch(_PATCH.format("OpenAI"), return_value=mock_client) as mock_openai_cls:
+        _call_openai("some prompt")
+
+    mock_openai_cls.assert_called_once_with(
+        api_key=settings.openai_api_key, max_retries=settings.openai_max_retries
+    )
+
+
 # ── _parse_response ──────────────────────────────────────────────────────────
 
 

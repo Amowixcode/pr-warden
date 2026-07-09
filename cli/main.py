@@ -13,6 +13,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from core.exceptions import VectorStoreError
+
 app = typer.Typer(help="pr-warden — context-aware PR review CLI")
 console = Console()
 err_console = Console(stderr=True)
@@ -47,6 +49,8 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
         _fail(f"failed to parse the AI review response: {e}")
     except OpenAIError as e:
         _fail(f"OpenAI API error: {e}")
+    except VectorStoreError as e:
+        _fail(str(e))
     except Exception as e:  # no custom exception hierarchy exists in core yet
         _fail(f"unexpected error: {e}")
 
