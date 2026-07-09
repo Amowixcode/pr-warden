@@ -37,7 +37,7 @@ async def ingest_repository(owner: str, repo: str) -> IngestResult:
     Returns:
         IngestResult with counts of newly indexed documents per type.
     """
-    client = GitHubClient(settings.github_token)
+    client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
 
     issues, prs, commits = await asyncio.gather(
         fetch_issues(client, owner, repo),

@@ -2413,7 +2413,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-chroma" },
     { name = "openai" },
     { name = "pydantic-settings" },
-    { name = "pygithub" },
+    { name = "pygithub", specifier = ">=2.9.1" },
     { name = "rich" },
     { name = "typer", extras = ["all"] },
 ]

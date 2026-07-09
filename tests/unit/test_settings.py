@@ -15,6 +15,7 @@ def _clear_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CHROMA_PERSIST_DIR",
         "CHROMA_COLLECTION_NAME",
         "OPENAI_MAX_RETRIES",
+        "GITHUB_MAX_RETRIES",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -51,6 +52,7 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.chroma_persist_dir == "./data/chroma"
     assert settings.chroma_collection_name == "pr_warden"
     assert settings.openai_max_retries == 3
+    assert settings.github_max_retries == 3
 
 
 def test_settings_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -60,12 +62,14 @@ def test_settings_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CHROMA_PERSIST_DIR", "/tmp/chroma")
     monkeypatch.setenv("CHROMA_COLLECTION_NAME", "custom_collection")
     monkeypatch.setenv("OPENAI_MAX_RETRIES", "7")
+    monkeypatch.setenv("GITHUB_MAX_RETRIES", "9")
 
     settings = Settings(_env_file=None)
 
     assert settings.chroma_persist_dir == "/tmp/chroma"
     assert settings.chroma_collection_name == "custom_collection"
     assert settings.openai_max_retries == 7
+    assert settings.github_max_retries == 9
 
 
 def test_settings_missing_required_fields_raises(monkeypatch: pytest.MonkeyPatch) -> None:
