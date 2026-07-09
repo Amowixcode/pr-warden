@@ -105,7 +105,7 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
     Returns:
         A ReviewResult with summary, verdict, issues, and suggestions.
     """
-    client = GitHubClient(settings.github_token)
+    client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
 
     collection = build_chroma_collection()
