@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from llama_index.core.schema import NodeWithScore, TextNode
 
-from core.review_service import ReviewResult, _build_prompt, _parse_response, review_pr
+from agents.state import AgentResult
+from core.review_service import ReviewResult, review_pr
 from gh.pr_fetcher import PRData
 from retrieval.context_builder import PRContext
 
 _PATCH = "core.review_service.{}"
 _NOW = datetime(2024, 6, 1, tzinfo=UTC)
 
-_VALID_JSON = json.dumps(
-    {
-        "summary": "Looks good overall.",
-        "verdict": "APPROVE",
-        "issues": ["Missing type hint on line 5"],
-        "suggestions": ["Add a docstring"],
-    }
+_VALID_FINAL_VERDICT = AgentResult(
+    summary="Looks good overall.",
+    verdict="APPROVE",
+    issues=["Missing type hint on line 5"],
+    suggestions=["Add a docstring"],
 )
 
 
@@ -60,14 +58,16 @@ def _make_context(
     )
 
 
-def _make_patches(pr: PRData, context: PRContext, openai_json: str = _VALID_JSON) -> dict:
+def _make_patches(
+    pr: PRData, context: PRContext, final_verdict: AgentResult = _VALID_FINAL_VERDICT
+) -> dict:
     return {
         "fetch_pull_request": AsyncMock(return_value=pr),
         "build_pr_context": AsyncMock(return_value=context),
         "build_chroma_collection": MagicMock(return_value=MagicMock()),
         "build_vector_store_index": MagicMock(return_value=MagicMock()),
         "get_embed_model": MagicMock(return_value=MagicMock()),
-        "_call_openai": MagicMock(return_value=openai_json),
+        "graph_ainvoke": AsyncMock(return_value={"final_verdict": final_verdict}),
         "GitHubClient": MagicMock(),
     }
 
@@ -79,7 +79,7 @@ def _apply(mocks: dict):
         patch(_PATCH.format("build_chroma_collection"), mocks["build_chroma_collection"]),
         patch(_PATCH.format("build_vector_store_index"), mocks["build_vector_store_index"]),
         patch(_PATCH.format("get_embed_model"), mocks["get_embed_model"]),
-        patch(_PATCH.format("_call_openai"), mocks["_call_openai"]),
+        patch(_PATCH.format("graph.ainvoke"), mocks["graph_ainvoke"]),
         patch(_PATCH.format("GitHubClient"), mocks["GitHubClient"]),
     )
 
@@ -123,7 +123,7 @@ async def test_review_pr_pr_number_matches_input() -> None:
     assert result.pr_number == 42
 
 
-async def test_review_pr_fields_from_openai_json() -> None:
+async def test_review_pr_fields_from_final_verdict() -> None:
     pr = _make_pr()
     mocks = _make_patches(pr, _make_context())
 
@@ -144,8 +144,8 @@ async def test_review_pr_fields_from_openai_json() -> None:
     assert result.suggestions == ["Add a docstring"]
 
 
-async def test_review_pr_prompt_contains_title() -> None:
-    pr = _make_pr(title="Unique PR title XYZ")
+async def test_review_pr_passes_pr_to_graph() -> None:
+    pr = _make_pr(title="Unique PR title XYZ", diff="unique-diff-marker-abc123")
     mocks = _make_patches(pr, _make_context())
 
     with (
@@ -159,12 +159,33 @@ async def test_review_pr_prompt_contains_title() -> None:
     ):
         await review_pr("owner", "repo", 7)
 
-    prompt = mocks["_call_openai"].call_args.args[0]
-    assert "Unique PR title XYZ" in prompt
+    initial_state = mocks["graph_ainvoke"].call_args.args[0]
+    assert initial_state["pr"].title == "Unique PR title XYZ"
+    assert initial_state["pr"].diff == "unique-diff-marker-abc123"
 
 
-async def test_review_pr_prompt_contains_diff() -> None:
-    pr = _make_pr(diff="unique-diff-marker-abc123")
+async def test_review_pr_passes_context_to_graph() -> None:
+    pr = _make_pr()
+    context = _make_context(issues=["Login fails on Safari"])
+    mocks = _make_patches(pr, context)
+
+    with (
+        _apply(mocks)[0],
+        _apply(mocks)[1],
+        _apply(mocks)[2],
+        _apply(mocks)[3],
+        _apply(mocks)[4],
+        _apply(mocks)[5],
+        _apply(mocks)[6],
+    ):
+        await review_pr("owner", "repo", 7)
+
+    initial_state = mocks["graph_ainvoke"].call_args.args[0]
+    assert initial_state["context"] is context
+
+
+async def test_review_pr_initial_state_has_no_agent_results_yet() -> None:
+    pr = _make_pr()
     mocks = _make_patches(pr, _make_context())
 
     with (
@@ -178,108 +199,8 @@ async def test_review_pr_prompt_contains_diff() -> None:
     ):
         await review_pr("owner", "repo", 7)
 
-    prompt = mocks["_call_openai"].call_args.args[0]
-    assert "unique-diff-marker-abc123" in prompt
-
-
-# ── _build_prompt ────────────────────────────────────────────────────────────
-
-
-def test_build_prompt_contains_title() -> None:
-    pr = _make_pr(title="My Special PR")
-    ctx = _make_context()
-    assert "My Special PR" in _build_prompt(pr, ctx)
-
-
-def test_build_prompt_contains_diff() -> None:
-    pr = _make_pr(diff="--- a/foo.py\n+++ b/foo.py")
-    ctx = _make_context()
-    assert "--- a/foo.py" in _build_prompt(pr, ctx)
-
-
-def test_build_prompt_contains_issue_node_text() -> None:
-    pr = _make_pr()
-    ctx = _make_context(issues=["Issue #1: Login fails on Safari"])
-    assert "Login fails on Safari" in _build_prompt(pr, ctx)
-
-
-def test_build_prompt_contains_pr_node_text() -> None:
-    pr = _make_pr()
-    ctx = _make_context(prs=["Merged PR #5: Add OAuth flow"])
-    assert "Add OAuth flow" in _build_prompt(pr, ctx)
-
-
-def test_build_prompt_contains_commit_node_text() -> None:
-    pr = _make_pr()
-    ctx = _make_context(commits=["Commit abc123: Fix null pointer"])
-    assert "Fix null pointer" in _build_prompt(pr, ctx)
-
-
-def test_build_prompt_empty_context_renders_none() -> None:
-    pr = _make_pr()
-    ctx = _make_context()
-    prompt = _build_prompt(pr, ctx)
-    assert prompt.count("(none)") == 3
-
-
-# ── _call_openai ─────────────────────────────────────────────────────────────
-
-
-def test_call_openai_uses_configured_max_retries() -> None:
-    from config.settings import settings
-    from core.review_service import _call_openai
-
-    mock_client = MagicMock()
-    mock_client.responses.create.return_value = MagicMock(output_text="ok")
-
-    with patch(_PATCH.format("OpenAI"), return_value=mock_client) as mock_openai_cls:
-        _call_openai("some prompt")
-
-    mock_openai_cls.assert_called_once_with(
-        api_key=settings.openai_api_key, max_retries=settings.openai_max_retries
-    )
-
-
-# ── _parse_response ──────────────────────────────────────────────────────────
-
-
-def test_parse_response_maps_all_fields() -> None:
-    raw = json.dumps(
-        {
-            "summary": "LGTM",
-            "verdict": "REQUEST_CHANGES",
-            "issues": ["bug A", "bug B"],
-            "suggestions": ["refactor X"],
-        }
-    )
-    result = _parse_response(99, raw)
-
-    assert result.pr_number == 99
-    assert result.summary == "LGTM"
-    assert result.verdict == "REQUEST_CHANGES"
-    assert result.issues == ["bug A", "bug B"]
-    assert result.suggestions == ["refactor X"]
-
-
-def test_parse_response_strips_json_code_fence() -> None:
-    raw = "```json\n" + _VALID_JSON + "\n```"
-    result = _parse_response(1, raw)
-    assert result.verdict == "APPROVE"
-
-
-def test_parse_response_strips_plain_code_fence() -> None:
-    raw = "```\n" + _VALID_JSON + "\n```"
-    result = _parse_response(1, raw)
-    assert result.verdict == "APPROVE"
-
-
-def test_parse_response_issues_defaults_to_empty_list() -> None:
-    raw = json.dumps({"summary": "ok", "verdict": "APPROVE"})
-    result = _parse_response(1, raw)
-    assert result.issues == []
-
-
-def test_parse_response_suggestions_defaults_to_empty_list() -> None:
-    raw = json.dumps({"summary": "ok", "verdict": "APPROVE"})
-    result = _parse_response(1, raw)
-    assert result.suggestions == []
+    initial_state = mocks["graph_ainvoke"].call_args.args[0]
+    assert initial_state["security_result"] is None
+    assert initial_state["quality_result"] is None
+    assert initial_state["test_result"] is None
+    assert initial_state["final_verdict"] is None
