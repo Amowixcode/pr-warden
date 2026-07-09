@@ -25,29 +25,30 @@ agent node has an edge into `summarizer`, which only executes once all three hav
 
 ## Node responsibilities
 
-- **`security_agent` / `quality_agent` / `test_agent`** (not yet implemented): each reads
-  `state["pr"]` (the `PRData` — diff, title, body, changed files) and `state["context"]` (the
-  `PRContext` — retrieved similar issues/merged PRs/commits from RAG), calls OpenAI with its own
-  specialist prompt, and returns a **partial state update** containing only its own key:
-  `{"security_result": AgentResult(...)}`, `{"quality_result": AgentResult(...)}`, or
-  `{"test_result": AgentResult(...)}` respectively. Each agent must never write to a key other
-  than its own.
-- **`summarizer`** (not yet implemented): runs only after all three agents complete, so
+- **`security_agent` / `quality_agent` / `test_agent`** (`agents/security_agent.py`,
+  `agents/quality_agent.py`, `agents/test_agent.py`): each reads `state["pr"]` (the `PRData` —
+  diff, title, body, changed files) and `state["context"]` (the `PRContext` — retrieved similar
+  issues/merged PRs/commits from RAG), calls OpenAI with its own specialist prompt, and returns a
+  **partial state update** containing only its own key: `{"security_result": AgentResult(...)}`,
+  `{"quality_result": AgentResult(...)}`, or `{"test_result": AgentResult(...)}` respectively.
+  Each agent must never write to a key other than its own.
+- **`summarizer`** (`agents/summarizer.py`): runs only after all three agents complete, so
   `state["security_result"]`, `state["quality_result"]`, and `state["test_result"]` are
   guaranteed populated. Reads all three, applies the merge policy below, and returns
-  `{"final_verdict": AgentResult(...)}`.
+  `{"final_verdict": AgentResult(...)}`. Deterministic — no OpenAI call.
 
 ## Merge policy contract
 
-The summarizer's implementation (a later ticket) must follow this rule:
+`agents/summarizer.py::summarizer` implements this rule:
 
 - `verdict` = `"REQUEST_CHANGES"` if **any** agent's verdict is `"REQUEST_CHANGES"`
 - else `"COMMENT"` if **any** agent's verdict is `"COMMENT"`
 - else `"APPROVE"` (only when all three agents approved)
 - `issues` = concatenation of all three agents' `issues` lists
 - `suggestions` = concatenation of all three agents' `suggestions` lists
-- `summary` is synthesized by the summarizer itself (an LLM call over the three agents' outputs,
-  not a formula) — left to the summarizer's implementation ticket.
+- `summary` = each agent's own summary, labeled by category and joined — a formula, not an LLM
+  call (an earlier draft of this doc assumed the summarizer would synthesize a new summary via
+  OpenAI; the implemented ticket's scope was a pure deterministic merge instead).
 
 ## Why no LangGraph reducer is needed
 
@@ -70,5 +71,7 @@ later graph-wiring ticket's job.
 
 ## Out of scope (future tickets)
 
-`security_agent.py`, `quality_agent.py`, `test_agent.py`, `summarizer.py`, and the compiled
-`StateGraph` wiring itself — none of these exist yet. This contract only unblocks them.
+The compiled `StateGraph` wiring itself (fan-out from `START`, fan-in into `summarizer`, edge to
+`END`) and integration into `core/review_service.py`/the CLI — not implemented yet. The four
+nodes (`security_agent.py`, `quality_agent.py`, `test_agent.py`, `summarizer.py`) all exist and
+are independently unit-tested, but nothing yet invokes them as a graph.
