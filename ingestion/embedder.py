@@ -1,3 +1,4 @@
+$content = @'
 from __future__ import annotations
 
 from llama_index.core.embeddings import BaseEmbedding
@@ -26,3 +27,8 @@ def get_embed_model(model_name: str = _DEFAULT_MODEL) -> BaseEmbedding:
         model=model_name,
         api_key=settings.openai_api_key,
     )
+'@
+
+[System.IO.File]::WriteAllText("$PWD\ingestion\embedder.py", $content, (New-Object System.Text.UTF8Encoding $false))
+git add ingestion/embedder.py
+git status

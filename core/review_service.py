@@ -107,13 +107,10 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
     """
     client = GitHubClient(settings.github_token)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
-
     collection = build_chroma_collection()
     embed_model = get_embed_model()
     index = build_vector_store_index(collection, embed_model)
-
     context = await build_pr_context(pr, index, owner, repo)
     prompt = _build_prompt(pr, context)
     response_text = await asyncio.to_thread(_call_openai, prompt)
-
     return _parse_response(pr.number, response_text)

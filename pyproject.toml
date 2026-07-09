@@ -1,3 +1,4 @@
+$content = @'
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -42,3 +43,8 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+'@
+
+[System.IO.File]::WriteAllText("$PWD\pyproject.toml", $content, (New-Object System.Text.UTF8Encoding $false))
+git add pyproject.toml
+git status
