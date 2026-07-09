@@ -4,10 +4,13 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import chromadb
+import httpx
 import pytest
 from llama_index.core import VectorStoreIndex
 from llama_index.core.embeddings.mock_embed_model import MockEmbedding
+from openai import APIConnectionError
 
+from core.exceptions import VectorStoreError
 from gh.repo_fetcher import CommitData
 from ingestion.github_loader import commits_to_documents
 from ingestion.vector_store import (
@@ -71,6 +74,14 @@ def test_build_chroma_collection_overrides_accepted():
         build_chroma_collection(persist_dir="custom/path", collection_name="my_col")
         mock_pc.assert_called_once_with(path="custom/path")
         mock_client.get_or_create_collection.assert_called_once_with("my_col")
+
+
+def test_build_chroma_collection_wraps_failure_as_vector_store_error():
+    with (
+        patch("chromadb.PersistentClient", side_effect=RuntimeError("disk full")),
+        pytest.raises(VectorStoreError, match="disk full"),
+    ):
+        build_chroma_collection(persist_dir="custom/path")
 
 
 # ── build_vector_store_index ─────────────────────────────────────────────────
@@ -139,3 +150,33 @@ async def test_index_documents_multiple_new_docs(index_and_collection):
     result = await index_documents(docs, idx, collection)
     assert result == 3
     assert collection.count() == 3
+
+
+async def test_index_documents_wraps_chroma_get_failure_as_vector_store_error(index_and_collection):
+    idx, collection = index_and_collection
+    docs = commits_to_documents([_make_commit()], "owner", "repo")
+    collection.get = MagicMock(side_effect=RuntimeError("query failed"))
+
+    with pytest.raises(VectorStoreError, match="query failed"):
+        await index_documents(docs, idx, collection)
+
+
+async def test_index_documents_wraps_insert_failure_as_vector_store_error(index_and_collection):
+    idx, collection = index_and_collection
+    docs = commits_to_documents([_make_commit()], "owner", "repo")
+    idx.insert = MagicMock(side_effect=RuntimeError("insert failed"))
+
+    with pytest.raises(VectorStoreError, match="insert failed"):
+        await index_documents(docs, idx, collection)
+
+
+async def test_index_documents_propagates_openai_error_unwrapped(index_and_collection):
+    idx, collection = index_and_collection
+    docs = commits_to_documents([_make_commit()], "owner", "repo")
+    openai_error = APIConnectionError(
+        request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+    )
+    idx.insert = MagicMock(side_effect=openai_error)
+
+    with pytest.raises(APIConnectionError):
+        await index_documents(docs, idx, collection)

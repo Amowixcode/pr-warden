@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import httpx
+import pytest
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import NodeWithScore, TextNode
+from openai import APIConnectionError
 
+from core.exceptions import VectorStoreError
 from retrieval.query_engine import retrieve
 
 
@@ -100,3 +104,29 @@ async def test_retrieve_forwards_query_text() -> None:
 
     retriever = index.as_retriever.return_value
     retriever.retrieve.assert_called_once_with("my specific query")
+
+
+# ── error handling ───────────────────────────────────────────────────────────
+
+
+async def test_retrieve_wraps_chroma_failure_as_vector_store_error() -> None:
+    mock_retriever = MagicMock()
+    mock_retriever.retrieve.side_effect = RuntimeError("chroma query failed")
+    mock_index = MagicMock(spec=VectorStoreIndex)
+    mock_index.as_retriever.return_value = mock_retriever
+
+    with pytest.raises(VectorStoreError, match="chroma query failed"):
+        await retrieve(mock_index, "query", "issue", "owner", "repo")
+
+
+async def test_retrieve_propagates_openai_error_unwrapped() -> None:
+    openai_error = APIConnectionError(
+        request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+    )
+    mock_retriever = MagicMock()
+    mock_retriever.retrieve.side_effect = openai_error
+    mock_index = MagicMock(spec=VectorStoreIndex)
+    mock_index.as_retriever.return_value = mock_retriever
+
+    with pytest.raises(APIConnectionError):
+        await retrieve(mock_index, "query", "issue", "owner", "repo")

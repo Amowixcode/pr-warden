@@ -25,4 +25,5 @@ def get_embed_model(model_name: str = _DEFAULT_MODEL) -> BaseEmbedding:
     return OpenAIEmbedding(
         model=model_name,
         api_key=settings.openai_api_key,
+        max_retries=settings.openai_max_retries,
     )

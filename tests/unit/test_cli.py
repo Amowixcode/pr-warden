@@ -9,6 +9,7 @@ from openai import OpenAIError
 from typer.testing import CliRunner
 
 from cli.main import _parse_repo, app
+from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
 
@@ -97,6 +98,19 @@ def test_review_openai_exception_no_traceback(monkeypatch: pytest.MonkeyPatch) -
 
     assert result.exit_code == 1
     assert "OpenAI API error" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_ingest_vectorstore_exception_no_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        side_effect=VectorStoreError("failed to open ChromaDB collection at 'x': boom")
+    )
+    monkeypatch.setattr("core.ingest_service.ingest_repository", mock)
+
+    result = runner.invoke(app, ["ingest", "octocat/Hello-World"])
+
+    assert result.exit_code == 1
+    assert "failed to open ChromaDB collection" in result.output
     assert "Traceback" not in result.output
 
 
