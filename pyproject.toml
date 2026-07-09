@@ -16,7 +16,7 @@ dependencies = [
     "llama-index-vector-stores-chroma",
     "llama-index-embeddings-openai",
     "chromadb",
-    "PyGitHub",
+    "PyGitHub>=2.9.1",
     "typer[all]",
     "rich",
     "pydantic-settings",
@@ -31,6 +31,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "httpx",
 ]
 
 [tool.pytest.ini_options]

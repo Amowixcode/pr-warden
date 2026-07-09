@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-from github import Github
+from github import Github, GithubRetry
 from github.Repository import Repository
 
 
 class GitHubClient:
     """Thin wrapper around PyGitHub's Github client.
 
-    Decoupled from config so callers and tests can inject any token directly.
+    Decoupled from config so callers and tests can inject any token/retry directly.
     """
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, max_retries: int = 3) -> None:
         """Initialise with a GitHub personal access token.
 
         Args:
             token: A GitHub PAT with at minimum ``repo`` read scope.
+            max_retries: Retry budget for transient errors (429/5xx, connection/timeout).
+                Passed to PyGitHub's GithubRetry, which also respects Retry-After and
+                backs off on primary/secondary rate limits — never retries other 4xx.
         """
-        self._github: Github = Github(token)
+        retry = GithubRetry(total=max_retries, backoff_factor=1.0)
+        self._github: Github = Github(token, retry=retry)
 
     def get_repo(self, owner: str, name: str) -> Repository:
         """Return the PyGitHub Repository for owner/name.

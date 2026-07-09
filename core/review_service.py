@@ -72,7 +72,7 @@ Return ONLY a JSON object with this exact schema — no surrounding text or code
 
 def _call_openai(prompt: str) -> str:
     """Synchronous OpenAI call; run via asyncio.to_thread to avoid blocking."""
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key, max_retries=settings.openai_max_retries)
     response = client.responses.create(
         model=_OPENAI_MODEL,
         input=prompt,
@@ -105,7 +105,7 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
     Returns:
         A ReviewResult with summary, verdict, issues, and suggestions.
     """
-    client = GitHubClient(settings.github_token)
+    client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
 
     collection = build_chroma_collection()

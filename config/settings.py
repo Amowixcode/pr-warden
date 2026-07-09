@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     openai_api_key: str
     chroma_persist_dir: str = "./data/chroma"
     chroma_collection_name: str = "pr_warden"
+    openai_max_retries: int = 3
+    github_max_retries: int = 3
 
 
 settings: Settings = Settings()

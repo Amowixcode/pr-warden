@@ -1,0 +1,14 @@
+name: Enforce dev-only merges to main
+   on:
+     pull_request:
+       branches: [main]
+
+   jobs:
+     check-source-branch:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Verify PR comes from dev
+           if: github.head_ref != 'dev'
+           run: |
+             echo "PRs inn til main må komme fra dev (fikk: ${{ github.head_ref }})"
+             exit 1

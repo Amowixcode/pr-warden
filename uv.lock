@@ -2398,6 +2398,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -2412,13 +2413,14 @@ requires-dist = [
     { name = "llama-index-vector-stores-chroma" },
     { name = "openai" },
     { name = "pydantic-settings" },
-    { name = "pygithub" },
+    { name = "pygithub", specifier = ">=2.9.1" },
     { name = "rich" },
     { name = "typer", extras = ["all"] },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
