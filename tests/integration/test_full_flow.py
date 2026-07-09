@@ -1,9 +1,14 @@
 """Full ingest -> review flow, mocking only the true external boundaries.
 
-Everything else — gh/, ingestion/, retrieval/, core/, cli/ — runs its real code, including
-real Chroma writes/reads (isolated_chroma fixture points it at tmp_path) and real prompt
-construction. This is the only test that proves the layers actually fit together end to end;
-every other test mocks each module in isolation from its neighbors.
+Everything else — gh/, ingestion/, retrieval/, core/, agents/, cli/ — runs its real code,
+including real Chroma writes/reads (isolated_chroma fixture points it at tmp_path), real prompt
+construction, and the real compiled multi-agent graph (security/quality/test -> summarizer).
+This is the only test that proves the layers actually fit together end to end; every other test
+mocks each module in isolation from its neighbors.
+
+The security/quality/test agents run concurrently and each sends OpenAI a distinct system
+prompt (agents/*_agent.py's `instructions=`), so the mock server routes canned /responses
+bodies by matching a unique marker substring in each agent's instructions, not by call order.
 """
 
 from __future__ import annotations
@@ -20,6 +25,10 @@ runner = CliRunner()
 _REPO_URL = "https://api.github.com/repos/acme/widgets"
 _ISSUE_MARKER = "Login fails on Safari"
 _MERGED_PR_MARKER = "Add OAuth flow"
+
+_SECURITY_MARKER = "SECURITY concerns"
+_QUALITY_MARKER = "CODE QUALITY concerns"
+_TEST_MARKER = "TEST ADEQUACY concerns"
 
 
 def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
@@ -116,7 +125,9 @@ def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
     }
 
 
-def _responses_body(verdict: str, summary: str, issues: list[str], suggestions: list[str]) -> dict:
+def _agent_response_body(
+    verdict: str, summary: str, issues: list[str], suggestions: list[str]
+) -> dict:
     output_text = json.dumps(
         {"summary": summary, "verdict": verdict, "issues": issues, "suggestions": suggestions}
     )
@@ -146,13 +157,27 @@ def test_ingest_then_review_full_flow(
     isolated_chroma: None,
 ) -> None:
     github_api.update(_github_fixtures())
-    openai_api.set_responses_body(
-        _responses_body(
+
+    openai_api.set_responses_body_for(
+        _SECURITY_MARKER,
+        _agent_response_body(
             verdict="REQUEST_CHANGES",
-            summary="Adds retry logic but is missing test coverage.",
-            issues=["No unit tests for the new retry path"],
-            suggestions=["Add a test covering the 5xx retry case"],
-        )
+            summary="Found a hardcoded token.",
+            issues=["Hardcoded GitHub token in gh/client.py"],
+            suggestions=["Move the token to an environment variable"],
+        ),
+    )
+    openai_api.set_responses_body_for(
+        _QUALITY_MARKER,
+        _agent_response_body(
+            verdict="APPROVE", summary="Style looks fine.", issues=[], suggestions=[]
+        ),
+    )
+    openai_api.set_responses_body_for(
+        _TEST_MARKER,
+        _agent_response_body(
+            verdict="APPROVE", summary="Adequately tested.", issues=[], suggestions=[]
+        ),
     )
 
     ingest_result = runner.invoke(app, ["ingest", "acme/widgets"])
@@ -164,14 +189,16 @@ def test_ingest_then_review_full_flow(
 
     review_result = runner.invoke(app, ["review", "acme/widgets", "7"])
     assert review_result.exit_code == 0, review_result.output
+    # The merge policy (agents/summarizer.py) must propagate REQUEST_CHANGES since the
+    # security agent flagged it, even though quality and test both approved.
     assert "REQUEST_CHANGES" in review_result.output
-    assert "No unit tests for the new retry path" in review_result.output
-    assert "Add a test covering the 5xx retry case" in review_result.output
+    assert "Hardcoded GitHub token in gh/client.py" in review_result.output
+    assert "Move the token to an environment variable" in review_result.output
 
-    # Proves the wiring, not just each layer in isolation: the prompt actually sent to
-    # OpenAI must contain the real text of documents ingested into Chroma in the first
-    # step and pulled back out by retrieval/query_engine.py during the second.
-    assert openai_api.responses_requests, "no request reached the /responses endpoint"
-    prompt = openai_api.responses_requests[-1]["input"]
-    assert _ISSUE_MARKER in prompt
-    assert _MERGED_PR_MARKER in prompt
+    # Proves the wiring, not just each layer in isolation: the prompts actually sent to
+    # OpenAI (one per specialist agent) must contain the real text of documents ingested into
+    # Chroma in the first step and pulled back out by retrieval/query_engine.py in the second.
+    assert len(openai_api.responses_requests) == 3, "expected one /responses call per agent"
+    prompts = [req["input"] for req in openai_api.responses_requests]
+    assert any(_ISSUE_MARKER in prompt for prompt in prompts)
+    assert any(_MERGED_PR_MARKER in prompt for prompt in prompts)

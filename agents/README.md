@@ -1,8 +1,8 @@
 # agents/ — review graph design
 
-Contract for the multi-agent PR review pipeline described in the top-level `CLAUDE.md`/`README.md`
-("runs parallel agents (security, quality, test) backed by OpenAI"). This document plus
-`state.py` are the contract; no node logic is implemented yet — see "Out of scope" below.
+The multi-agent PR review pipeline described in the top-level `CLAUDE.md`/`README.md` ("runs
+parallel agents (security, quality, test) backed by OpenAI"). Fully implemented and wired into
+`core/review_service.py::review_pr` — see "Integration point" below.
 
 ## Graph shape
 
@@ -62,16 +62,26 @@ complexity for a fixed set of three known agents. Don't "simplify" the schema in
 without adding the reducer, or the graph will raise `InvalidUpdateError` the first time two
 agents complete in the same superstep.
 
-## Integration point (out of scope here)
+## Integration point
 
-Eventually `core/review_service.py` will build the initial `ReviewState` from a `PRData`/
-`PRContext` it already fetches, invoke the compiled graph, and map `final_verdict` into (or
-replace) today's single-prompt `ReviewResult`. Not implemented as part of this contract — a
-later graph-wiring ticket's job.
+`core/review_service.py::review_pr` builds the initial `ReviewState` from the `PRData`/
+`PRContext` it already fetches, invokes the compiled graph (`agents/graph.py`'s `graph.ainvoke`),
+and maps `final_verdict` into `ReviewResult` — same field shapes, no translation logic needed.
+`review_pr`'s public signature and `ReviewResult` are unchanged from the earlier single-prompt
+implementation, so `cli/main.py` required no changes.
 
-## Out of scope (future tickets)
+## Graph wiring
 
-The compiled `StateGraph` wiring itself (fan-out from `START`, fan-in into `summarizer`, edge to
-`END`) and integration into `core/review_service.py`/the CLI — not implemented yet. The four
-nodes (`security_agent.py`, `quality_agent.py`, `test_agent.py`, `summarizer.py`) all exist and
-are independently unit-tested, but nothing yet invokes them as a graph.
+`agents/graph.py::build_graph()` compiles the `StateGraph` described above: `add_node` for all
+four nodes, `add_edge(START, agent)` for each of the three specialist agents (fan-out), and a
+single `add_edge([security_agent, quality_agent, test_agent], "summarizer")` call for fan-in —
+the list form registers a joint "wait for all three" trigger. For this specific topology (all
+three agents are direct children of `START`, so they always complete in the same superstep),
+three separate `add_edge` calls happen to produce the same single-execution behavior in practice
+(verified empirically) — but the list form is used because it's self-documenting and is the form
+that stays correct if the topology later changes (e.g. a retry/conditional edge on one agent).
+
+`build_graph()` is exposed separately from the module-level `graph` singleton specifically so
+tests can rebuild the graph after patching the node functions (patches only take effect on a
+graph built after the patch, since `.compile()` bakes in whatever function references are
+current at build time) — see `tests/unit/test_graph.py`.
