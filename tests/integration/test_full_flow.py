@@ -195,6 +195,16 @@ def test_ingest_then_review_full_flow(
     assert "Hardcoded GitHub token in gh/client.py" in review_result.output
     assert "Move the token to an environment variable" in review_result.output
 
+    # The CLI must show each agent's own finding, not just the merged verdict — proves the
+    # real per-agent AgentResults (not just final_verdict) reach cli/main.py.
+    assert "Per-Agent Findings" in review_result.output
+    assert "Security" in review_result.output
+    assert "Quality" in review_result.output
+    assert "Test Coverage" in review_result.output
+    assert "Style looks fine." in review_result.output
+    assert "Adequately tested." in review_result.output
+    assert "Final Verdict" in review_result.output
+
     # Proves the wiring, not just each layer in isolation: the prompts actually sent to
     # OpenAI (one per specialist agent) must contain the real text of documents ingested into
     # Chroma in the first step and pulled back out by retrieval/query_engine.py in the second.

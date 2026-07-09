@@ -66,19 +66,36 @@ def _print_ingest_result(owner: str, repo: str, result: Any) -> None:
     console.print(table)
 
 
-def _print_review_result(result: Any) -> None:
+def _print_agent_section(title: str, result: Any) -> None:
+    """Print a Panel + Issues + Suggestions block for anything with those four fields.
+
+    Shared by each per-agent AgentResult and the final aggregated ReviewResult — both have the
+    same summary/verdict/issues/suggestions shape.
+    """
     style = _VERDICT_STYLE.get(result.verdict, "bold white")
-    header = f"PR #{result.pr_number}  [{style}]{result.verdict}[/{style}]"
+    header = f"{title}  [{style}]{result.verdict}[/{style}]"
     console.print(Panel(result.summary, title=header, border_style=style))
 
     console.print("[bold]Issues[/bold]" if result.issues else "[dim]No issues found.[/dim]")
     for issue in result.issues:
         console.print(f"  • {issue}")
 
-    has_suggestions = result.suggestions
-    console.print("[bold]Suggestions[/bold]" if has_suggestions else "[dim]No suggestions.[/dim]")
+    console.print(
+        "[bold]Suggestions[/bold]" if result.suggestions else "[dim]No suggestions.[/dim]"
+    )
     for suggestion in result.suggestions:
         console.print(f"  • {suggestion}")
+
+
+def _print_review_result(result: Any) -> None:
+    console.print("[bold underline]Per-Agent Findings[/bold underline]")
+    _print_agent_section("Security", result.security_result)
+    _print_agent_section("Quality", result.quality_result)
+    _print_agent_section("Test Coverage", result.test_result)
+
+    console.print()
+    console.print("[bold underline]Final Verdict[/bold underline]")
+    _print_agent_section(f"PR #{result.pr_number}", result)
 
 
 @app.command()

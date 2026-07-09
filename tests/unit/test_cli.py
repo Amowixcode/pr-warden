@@ -8,12 +8,24 @@ from github import GithubException
 from openai import OpenAIError
 from typer.testing import CliRunner
 
+from agents.state import AgentResult
 from cli.main import _parse_repo, app
 from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
 
 runner = CliRunner()
+
+
+def _agent_result(
+    verdict: str = "APPROVE",
+    summary: str = "Looks fine",
+    issues: list[str] | None = None,
+    suggestions: list[str] | None = None,
+) -> AgentResult:
+    return AgentResult(
+        summary=summary, verdict=verdict, issues=issues or [], suggestions=suggestions or []
+    )
 
 
 def test_ingest_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,6 +52,9 @@ def test_review_approve_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
             verdict="APPROVE",
             issues=[],
             suggestions=["Add tests"],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
         )
     )
     monkeypatch.setattr("core.review_service.review_pr", mock)
@@ -60,6 +75,9 @@ def test_review_request_changes_lists_issues(monkeypatch: pytest.MonkeyPatch) ->
             verdict="REQUEST_CHANGES",
             issues=["bug A", "bug B"],
             suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
         )
     )
     monkeypatch.setattr("core.review_service.review_pr", mock)
@@ -70,6 +88,44 @@ def test_review_request_changes_lists_issues(monkeypatch: pytest.MonkeyPatch) ->
     assert "REQUEST_CHANGES" in result.stdout
     assert "bug A" in result.stdout
     assert "bug B" in result.stdout
+
+
+def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Overall needs work",
+            verdict="REQUEST_CHANGES",
+            issues=["Hardcoded secret", "Missing docstring", "No edge-case test"],
+            suggestions=[],
+            security_result=_agent_result(
+                verdict="REQUEST_CHANGES",
+                summary="Found a hardcoded secret",
+                issues=["Hardcoded secret"],
+            ),
+            quality_result=_agent_result(
+                verdict="COMMENT", summary="Missing a docstring", issues=["Missing docstring"]
+            ),
+            test_result=_agent_result(
+                verdict="COMMENT",
+                summary="No edge-case coverage",
+                issues=["No edge-case test"],
+            ),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert result.exit_code == 0
+    assert "Per-Agent Findings" in result.stdout
+    assert "Security" in result.stdout
+    assert "Quality" in result.stdout
+    assert "Test Coverage" in result.stdout
+    assert "Found a hardcoded secret" in result.stdout
+    assert "Missing a docstring" in result.stdout
+    assert "No edge-case coverage" in result.stdout
+    assert "Final Verdict" in result.stdout
 
 
 def test_invalid_repo_format_missing_slash() -> None:
