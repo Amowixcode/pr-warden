@@ -70,7 +70,7 @@ async def fetch_issues(
 
     def _fetch_sync() -> list[IssueData]:
         repo = client.get_repo(owner, name)
-        raw = repo.get_issues(state=state)
+        raw = repo.get_issues(state=state, sort="created", direction="desc")
         results: list[IssueData] = []
         for issue in itertools.islice(raw, limit * 2):  # over-fetch to account for filtered PRs
             if issue.pull_request is not None:
@@ -118,7 +118,7 @@ async def fetch_merged_prs(
 
     def _fetch_sync() -> list[MergedPRData]:
         repo = client.get_repo(owner, name)
-        raw = repo.get_pulls(state="closed")
+        raw = repo.get_pulls(state="closed", sort="created", direction="desc")
         results: list[MergedPRData] = []
         for pr in itertools.islice(raw, limit * 2):  # over-fetch to account for unmerged closed PRs
             if pr.merged_at is None:

@@ -4,7 +4,7 @@
 
 `pr-warden` is a context-aware PR review CLI built with LangGraph multi-agent orchestration and RAG.
 It indexes a GitHub repo's history (issues, commits, merged PRs) into ChromaDB via LlamaIndex,
-then runs parallel agents (security, quality, test) backed by Gemini to review pull requests.
+then runs parallel agents (security, quality, test) backed by OpenAI to review pull requests.
 
 CLI commands:
 - `warden ingest <owner/repo>` — index a repo
@@ -37,7 +37,7 @@ config/     — Pydantic Settings, loads from .env
 - PyGitHub (GitHub API)
 - Typer + Rich (CLI)
 - Pydantic Settings (config)
-- Google Gemini (LLM)
+- OpenAI (LLM)
 
 ## Development commands
 

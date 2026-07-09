@@ -14,13 +14,13 @@ dependencies = [
     "langgraph",
     "llama-index-core",
     "llama-index-vector-stores-chroma",
-    "llama-index-embeddings-google-genai",
+    "llama-index-embeddings-openai",
     "chromadb",
     "PyGitHub",
     "typer[all]",
     "rich",
     "pydantic-settings",
-    "google-generativeai",
+    "openai",
 ]
 
 [project.scripts]

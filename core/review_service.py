@@ -4,8 +4,8 @@ import asyncio
 import json
 from dataclasses import dataclass
 
-import google.generativeai as genai
 from llama_index.core.schema import NodeWithScore
+from openai import OpenAI
 
 from config.settings import settings
 from gh.client import GitHubClient
@@ -14,7 +14,7 @@ from ingestion.embedder import get_embed_model
 from ingestion.vector_store import build_chroma_collection, build_vector_store_index
 from retrieval.context_builder import PRContext, build_pr_context
 
-_GEMINI_MODEL = "gemini-3.5-flash"
+_OPENAI_MODEL = "gpt-4.1-mini"
 
 
 @dataclass
@@ -33,7 +33,7 @@ def _format_nodes(nodes: list[NodeWithScore]) -> str:
 
 
 def _build_prompt(pr: PRData, context: PRContext) -> str:
-    """Build the Gemini review prompt from PR data and retrieval context."""
+    """Build the OpenAI review prompt from PR data and retrieval context."""
     return f"""\
 You are an expert code reviewer. Review the pull request below and return a JSON object.
 
@@ -70,15 +70,19 @@ Return ONLY a JSON object with this exact schema — no surrounding text or code
 """
 
 
-def _call_gemini(prompt: str) -> str:
-    """Synchronous Gemini call; run via asyncio.to_thread to avoid blocking."""
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(_GEMINI_MODEL)
-    return model.generate_content(prompt).text
+def _call_openai(prompt: str) -> str:
+    """Synchronous OpenAI call; run via asyncio.to_thread to avoid blocking."""
+    client = OpenAI(api_key=settings.openai_api_key)
+    response = client.responses.create(
+        model=_OPENAI_MODEL,
+        input=prompt,
+        store=False,
+    )
+    return response.output_text
 
 
 def _parse_response(pr_number: int, text: str) -> ReviewResult:
-    """Parse Gemini response text into a ReviewResult, stripping code fences if present."""
+    """Parse OpenAI response text into a ReviewResult, stripping code fences if present."""
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data = json.loads(text)
     return ReviewResult(
@@ -110,6 +114,6 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
 
     context = await build_pr_context(pr, index, owner, repo)
     prompt = _build_prompt(pr, context)
-    response_text = await asyncio.to_thread(_call_gemini, prompt)
+    response_text = await asyncio.to_thread(_call_openai, prompt)
 
     return _parse_response(pr.number, response_text)
