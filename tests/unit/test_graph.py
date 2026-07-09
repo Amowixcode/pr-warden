@@ -150,3 +150,36 @@ def test_final_output_state_contains_summarizer_result() -> None:
         output_state = compiled.invoke(_make_initial_state())
 
     assert output_state["final_verdict"] == final
+
+
+def test_real_summarizer_applies_merge_policy_through_the_graph() -> None:
+    """Only the three agents are mocked here — summarizer is the real function, not a mock.
+
+    The other tests in this file mock summarizer too, so they only prove graph execution calls
+    whatever is registered under that node name — not that the real merge-policy logic is
+    correctly wired in. This closes that gap without the overhead of the full HTTP-mocked
+    integration test.
+    """
+    security = AgentResult(
+        summary="Found a hardcoded secret",
+        verdict="REQUEST_CHANGES",
+        issues=["Hardcoded secret"],
+        suggestions=["Use an env var"],
+    )
+    quality = AgentResult(summary="Looks clean", verdict="APPROVE", issues=[], suggestions=[])
+    test = AgentResult(summary="Well covered", verdict="APPROVE", issues=[], suggestions=[])
+
+    with (
+        patch(
+            _PATCH.format("security_agent"), MagicMock(return_value={"security_result": security})
+        ),
+        patch(_PATCH.format("quality_agent"), MagicMock(return_value={"quality_result": quality})),
+        patch(_PATCH.format("test_agent"), MagicMock(return_value={"test_result": test})),
+    ):
+        compiled = build_graph()
+        output_state = compiled.invoke(_make_initial_state())
+
+    final = output_state["final_verdict"]
+    assert final.verdict == "REQUEST_CHANGES"
+    assert final.issues == ["Hardcoded secret"]
+    assert final.suggestions == ["Use an env var"]
