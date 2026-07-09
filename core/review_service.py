@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agents.graph import graph
-from agents.state import ReviewState
+from agents.state import AgentResult, ReviewState
 from config.settings import settings
 from gh.client import GitHubClient
 from gh.pr_fetcher import fetch_pull_request
@@ -19,6 +19,9 @@ class ReviewResult:
     verdict: str  # "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
     issues: list[str]
     suggestions: list[str]
+    security_result: AgentResult
+    quality_result: AgentResult
+    test_result: AgentResult
 
 
 async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
@@ -61,4 +64,7 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
         verdict=final.verdict,
         issues=final.issues,
         suggestions=final.suggestions,
+        security_result=final_state["security_result"],
+        quality_result=final_state["quality_result"],
+        test_result=final_state["test_result"],
     )

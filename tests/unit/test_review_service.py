@@ -19,6 +19,16 @@ _VALID_FINAL_VERDICT = AgentResult(
     issues=["Missing type hint on line 5"],
     suggestions=["Add a docstring"],
 )
+_SECURITY_RESULT = AgentResult(
+    summary="No secrets found", verdict="APPROVE", issues=[], suggestions=[]
+)
+_QUALITY_RESULT = AgentResult(
+    summary="Missing type hint",
+    verdict="APPROVE",
+    issues=["Missing type hint on line 5"],
+    suggestions=["Add a docstring"],
+)
+_TEST_RESULT = AgentResult(summary="Well covered", verdict="APPROVE", issues=[], suggestions=[])
 
 
 def _make_pr(
@@ -67,7 +77,14 @@ def _make_patches(
         "build_chroma_collection": MagicMock(return_value=MagicMock()),
         "build_vector_store_index": MagicMock(return_value=MagicMock()),
         "get_embed_model": MagicMock(return_value=MagicMock()),
-        "graph_ainvoke": AsyncMock(return_value={"final_verdict": final_verdict}),
+        "graph_ainvoke": AsyncMock(
+            return_value={
+                "final_verdict": final_verdict,
+                "security_result": _SECURITY_RESULT,
+                "quality_result": _QUALITY_RESULT,
+                "test_result": _TEST_RESULT,
+            }
+        ),
         "GitHubClient": MagicMock(),
     }
 
@@ -182,6 +199,26 @@ async def test_review_pr_passes_context_to_graph() -> None:
 
     initial_state = mocks["graph_ainvoke"].call_args.args[0]
     assert initial_state["context"] is context
+
+
+async def test_review_pr_carries_per_agent_results_through() -> None:
+    pr = _make_pr()
+    mocks = _make_patches(pr, _make_context())
+
+    with (
+        _apply(mocks)[0],
+        _apply(mocks)[1],
+        _apply(mocks)[2],
+        _apply(mocks)[3],
+        _apply(mocks)[4],
+        _apply(mocks)[5],
+        _apply(mocks)[6],
+    ):
+        result = await review_pr("owner", "repo", 7)
+
+    assert result.security_result == _SECURITY_RESULT
+    assert result.quality_result == _QUALITY_RESULT
+    assert result.test_result == _TEST_RESULT
 
 
 async def test_review_pr_initial_state_has_no_agent_results_yet() -> None:
