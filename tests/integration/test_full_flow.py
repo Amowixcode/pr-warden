@@ -30,6 +30,10 @@ _SECURITY_MARKER = "SECURITY concerns"
 _QUALITY_MARKER = "CODE QUALITY concerns"
 _TEST_MARKER = "TEST ADEQUACY concerns"
 
+_FIRST_HEAD_SHA = "d" * 40
+_SECOND_HEAD_SHA = "e" * 40
+_NEW_COMMIT_MARKER = "logging_import_marker_xyz"
+
 
 def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
     return {
@@ -102,7 +106,7 @@ def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
                 "state": "open",
                 "user": {"login": "dave"},
                 "base": {"ref": "main"},
-                "head": {"ref": "feature/retry"},
+                "head": {"ref": "feature/retry", "sha": _FIRST_HEAD_SHA},
                 "created_at": "2026-02-01T00:00:00Z",
                 "updated_at": "2026-02-02T00:00:00Z",
             },
@@ -129,12 +133,12 @@ def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
             {},
             [
                 {
-                    "sha": "d" * 40,
+                    "sha": _FIRST_HEAD_SHA,
                     "commit": {
                         "message": "Add retry-with-backoff for transient GitHub API errors",
                         "author": {"name": "dave", "date": "2026-02-01T00:00:00Z"},
                     },
-                    "html_url": f"{_REPO_URL}/commit/{'d' * 40}",
+                    "html_url": f"{_REPO_URL}/commit/{_FIRST_HEAD_SHA}",
                 }
             ],
         ),
@@ -171,6 +175,7 @@ def test_ingest_then_review_full_flow(
     github_api: dict[tuple[str, str], tuple[dict, object]],
     openai_api: OpenAIMock,
     isolated_chroma: None,
+    isolated_review_history: None,
 ) -> None:
     github_api.update(_github_fixtures())
 
@@ -229,3 +234,69 @@ def test_ingest_then_review_full_flow(
     prompts = [req["input"] for req in openai_api.responses_requests]
     assert any(_ISSUE_MARKER in prompt for prompt in prompts)
     assert any(_MERGED_PR_MARKER in prompt for prompt in prompts)
+
+    # Second review, simulating a new commit pushed upstream: update the PR's head SHA, its
+    # commit list, and register a compare(first_sha, second_sha) response containing only the
+    # new commit's change. This proves the incremental path actually narrows what reaches the
+    # LLM, not just that a banner gets printed — an automated proxy for the acceptance
+    # criteria's manual "push a commit upstream, re-review" test.
+    github_api[("GET", f"{_REPO_URL}/pulls/7")] = (
+        {},
+        {
+            "url": f"{_REPO_URL}/pulls/7",
+            "number": 7,
+            "title": "Add retry logic to GitHub calls",
+            "body": "Adds retry-with-backoff for transient GitHub API errors.",
+            "state": "open",
+            "user": {"login": "dave"},
+            "base": {"ref": "main"},
+            "head": {"ref": "feature/retry", "sha": _SECOND_HEAD_SHA},
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-03T00:00:00Z",
+        },
+    )
+    github_api[("GET", f"{_REPO_URL}/pulls/7/commits")] = (
+        {},
+        [
+            {
+                "sha": _FIRST_HEAD_SHA,
+                "commit": {
+                    "message": "Add retry-with-backoff for transient GitHub API errors",
+                    "author": {"name": "dave", "date": "2026-02-01T00:00:00Z"},
+                },
+                "html_url": f"{_REPO_URL}/commit/{_FIRST_HEAD_SHA}",
+            },
+            {
+                "sha": _SECOND_HEAD_SHA,
+                "commit": {
+                    "message": "Add logging around retry attempts",
+                    "author": {"name": "dave", "date": "2026-02-03T00:00:00Z"},
+                },
+                "html_url": f"{_REPO_URL}/commit/{_SECOND_HEAD_SHA}",
+            },
+        ],
+    )
+    github_api[("GET", f"{_REPO_URL}/compare/{_FIRST_HEAD_SHA}...{_SECOND_HEAD_SHA}")] = (
+        {},
+        {
+            "files": [
+                {
+                    "filename": "gh/client.py",
+                    "status": "modified",
+                    "additions": 2,
+                    "deletions": 0,
+                    "patch": f"@@ -10,0 +11,2 @@\n+import logging  # {_NEW_COMMIT_MARKER}\n"
+                    "+logger = logging.getLogger(__name__)",
+                }
+            ]
+        },
+    )
+
+    second_review_result = runner.invoke(app, ["review", "acme/widgets", "7"])
+    assert second_review_result.exit_code == 1, second_review_result.output
+    assert "Incremental review" in second_review_result.output
+
+    new_prompts = [req["input"] for req in openai_api.responses_requests[3:]]
+    assert len(new_prompts) == 3, "expected one more /responses call per agent"
+    assert any(_NEW_COMMIT_MARKER in prompt for prompt in new_prompts)
+    assert not any("GithubRetry" in prompt for prompt in new_prompts)

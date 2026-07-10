@@ -150,3 +150,11 @@ def isolated_chroma(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     monkeypatch.setattr(settings, "chroma_persist_dir", str(tmp_path / "chroma"))
     monkeypatch.setattr(settings, "chroma_collection_name", "integration_test")
+
+
+@pytest.fixture
+def isolated_review_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the review-history store at a tmp_path so the test never touches the real file."""
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "review_history_path", str(tmp_path / "review_history.json"))

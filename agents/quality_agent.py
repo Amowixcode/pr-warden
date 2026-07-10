@@ -9,7 +9,7 @@ from agents.state import AgentResult, ReviewState
 from config.settings import settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
-from retrieval.context_builder import PRContext
+from retrieval.context_builder import PRContext, ReviewRecord
 
 _OPENAI_MODEL = "gpt-4.1-mini"
 
@@ -65,6 +65,18 @@ def _format_linked_issues(issues: list[IssueData]) -> str:
     return "\n\n---\n\n".join(f"#{i.number}: {i.title}\n{i.body}" for i in issues)
 
 
+def _format_prior_review(prior_review: ReviewRecord | None) -> str:
+    if prior_review is None:
+        return ""
+    return f"""
+## Incremental Review
+This PR was previously reviewed at commit {prior_review.head_sha[:7]}. Prior verdict: \
+{prior_review.verdict} — {prior_review.summary}
+Only the diff below reflects changes made since that prior review. Focus on what's new; \
+don't re-flag concerns that apply equally to the unchanged prior code.
+"""
+
+
 def _build_input(pr: PRData, context: PRContext) -> str:
     """Build the quality-review input from PR data and retrieval context."""
     return f"""\
@@ -81,7 +93,7 @@ Branch: {pr.head_branch} → {pr.base_branch}
 
 ### Diff
 {pr.diff}
-
+{_format_prior_review(context.prior_review)}
 ## Linked Issues
 {_format_linked_issues(context.linked_issues)}
 
