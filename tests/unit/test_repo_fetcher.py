@@ -54,6 +54,7 @@ def _make_mock_pr(
     title: str = "Add feature X",
     body: str | None = "This PR adds...",
     merged: bool = True,
+    updated_at: datetime = _NOW,
 ) -> MagicMock:
     pr = MagicMock()
     pr.number = number
@@ -63,6 +64,7 @@ def _make_mock_pr(
     pr.base.ref = "main"
     pr.head.ref = "feature/x"
     pr.merged_at = _NOW if merged else None
+    pr.updated_at = updated_at
     return pr
 
 
@@ -123,6 +125,24 @@ async def test_fetch_issues_none_body_coerced() -> None:
     assert results[0].body == ""
 
 
+async def test_fetch_issues_forwards_since_kwarg() -> None:
+    mock_client = _make_mock_client([], method="get_issues")
+
+    await fetch_issues(mock_client, "o", "r", since=_THEN)
+
+    kwargs = mock_client.get_repo.return_value.get_issues.call_args.kwargs
+    assert kwargs["since"] == _THEN
+
+
+async def test_fetch_issues_omits_since_kwarg_by_default() -> None:
+    mock_client = _make_mock_client([], method="get_issues")
+
+    await fetch_issues(mock_client, "o", "r")
+
+    kwargs = mock_client.get_repo.return_value.get_issues.call_args.kwargs
+    assert "since" not in kwargs
+
+
 # ---------------------------------------------------------------------------
 # fetch_merged_prs
 # ---------------------------------------------------------------------------
@@ -156,6 +176,36 @@ async def test_fetch_merged_prs_none_body_coerced() -> None:
     assert results[0].body == ""
 
 
+async def test_fetch_merged_prs_default_sort_is_created() -> None:
+    mock_client = _make_mock_client([], method="get_pulls")
+
+    await fetch_merged_prs(mock_client, "o", "r")
+
+    kwargs = mock_client.get_repo.return_value.get_pulls.call_args.kwargs
+    assert kwargs["sort"] == "created"
+
+
+async def test_fetch_merged_prs_uses_updated_sort_when_since_given() -> None:
+    mock_client = _make_mock_client([], method="get_pulls")
+
+    await fetch_merged_prs(mock_client, "o", "r", since=_THEN)
+
+    kwargs = mock_client.get_repo.return_value.get_pulls.call_args.kwargs
+    assert kwargs["sort"] == "updated"
+
+
+async def test_fetch_merged_prs_stops_at_since_cutoff() -> None:
+    cutoff = datetime(2024, 6, 1, 12, 0, 0)
+    recent = _make_mock_pr(number=20, merged=True, updated_at=datetime(2024, 6, 2, 12, 0, 0))
+    old = _make_mock_pr(number=10, merged=True, updated_at=datetime(2024, 5, 1, 12, 0, 0))
+    # Sorted updated-desc, as the real API would return when sort="updated".
+    mock_client = _make_mock_client([recent, old], method="get_pulls")
+
+    results = await fetch_merged_prs(mock_client, "o", "r", since=cutoff)
+
+    assert [pr.number for pr in results] == [20]
+
+
 # ---------------------------------------------------------------------------
 # fetch_recent_commits
 # ---------------------------------------------------------------------------
@@ -185,3 +235,21 @@ async def test_fetch_recent_commits_respects_limit() -> None:
 
     assert len(results) == 3
     assert [c.sha for c in results] == ["0", "1", "2"]
+
+
+async def test_fetch_recent_commits_forwards_since_kwarg() -> None:
+    mock_client = _make_mock_client([], method="get_commits")
+
+    await fetch_recent_commits(mock_client, "o", "r", since=_THEN)
+
+    kwargs = mock_client.get_repo.return_value.get_commits.call_args.kwargs
+    assert kwargs["since"] == _THEN
+
+
+async def test_fetch_recent_commits_omits_since_kwarg_by_default() -> None:
+    mock_client = _make_mock_client([], method="get_commits")
+
+    await fetch_recent_commits(mock_client, "o", "r")
+
+    kwargs = mock_client.get_repo.return_value.get_commits.call_args.kwargs
+    assert "since" not in kwargs

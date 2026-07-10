@@ -7,7 +7,8 @@ It indexes a GitHub repo's history (issues, commits, merged PRs) into ChromaDB v
 then runs parallel agents (security, quality, test) backed by OpenAI to review pull requests.
 
 CLI commands:
-- `warden ingest <owner/repo>` — index a repo
+- `warden ingest <owner/repo>` — index a repo, incremental by default since the last ingest
+  (`--full` to ignore ingest history)
 - `warden review <owner/repo> <pr_number>` — review a PR, incremental by default since the
   last review (exits non-zero on REQUEST_CHANGES; `--json` for machine-readable output;
   `--full` to ignore review history)

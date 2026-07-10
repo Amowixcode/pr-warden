@@ -223,3 +223,7 @@ __marimo__/
 # chroma
 data/chroma/
 
+# ingest/review history
+data/ingest_history.json
+data/review_history.json
+
