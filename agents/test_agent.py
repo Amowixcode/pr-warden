@@ -21,12 +21,17 @@ concerns only:
 
 Do not comment on security, style, naming, or complexity — that is out of scope for this review.
 
+Keep findings terse and bullet-style, never narrative paragraphs. Include a file and line \
+number in each issue when the diff makes one determinable (e.g. "gh/client.py:23 — ..."). \
+Return at most 3 suggestions — the most important ones only, omit minor nits.
+
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
-  "summary": "<2-3 sentence overview of test-coverage findings, or lack thereof>",
+  "summary": "<one short sentence; if there are no issues, a single short line like \
+'Adequately tested.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific test-coverage gap found>", ...],
-  "suggestions": ["<test-coverage improvement suggestion>", ...]
+  "issues": ["<file:line — short, specific test-coverage gap>", ...],
+  "suggestions": ["<short, specific test-coverage improvement suggestion>", ...]
 }"""
 
 

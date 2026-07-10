@@ -44,11 +44,15 @@ agent node has an edge into `summarizer`, which only executes once all three hav
 - `verdict` = `"REQUEST_CHANGES"` if **any** agent's verdict is `"REQUEST_CHANGES"`
 - else `"COMMENT"` if **any** agent's verdict is `"COMMENT"`
 - else `"APPROVE"` (only when all three agents approved)
-- `issues` = concatenation of all three agents' `issues` lists
-- `suggestions` = concatenation of all three agents' `suggestions` lists
-- `summary` = each agent's own summary, labeled by category and joined — a formula, not an LLM
-  call (an earlier draft of this doc assumed the summarizer would synthesize a new summary via
-  OpenAI; the implemented ticket's scope was a pure deterministic merge instead).
+- `issues` = all three agents' `issues` lists combined, capped to the first 5 total
+- `suggestions` = all three agents' `suggestions` lists combined, capped to the first 3 total
+- `summary` = a synthesized one-liner (e.g. `"REQUEST_CHANGES — 2 issues flagged by security,
+  test coverage."`, or `"No blocking concerns from security, quality, or test coverage review."`
+  when APPROVE) — never each agent's own summary text repeated. Still a formula, not an LLM call
+  (an earlier draft of this doc assumed the summarizer would synthesize a new summary via OpenAI;
+  the first implemented version was a pure unbounded concatenation instead; this later revision
+  replaced that concatenation with the capped, synthesized one-liner described above — still no
+  OpenAI call, per a deliberate cost/latency tradeoff).
 
 ## Why no LangGraph reducer is needed
 
