@@ -96,6 +96,23 @@ def _print_agent_section(title: str, result: Any) -> None:
         console.print(f"  • {suggestion}")
 
 
+def _print_doctor_result(result: Any) -> None:
+    """Print a pass/fail table for each doctor check — never the check's raw secret value."""
+    table = Table(title="pr-warden setup check", header_style="bold cyan")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for check in result.checks:
+        status = "[bold green]PASS[/bold green]" if check.passed else "[bold red]FAIL[/bold red]"
+        table.add_row(check.name, status, check.detail)
+    console.print(table)
+
+    if result.all_passed:
+        console.print("[bold green]All checks passed.[/bold green]")
+    else:
+        err_console.print("[bold red]One or more checks failed.[/bold red]")
+
+
 def _print_review_result(result: Any) -> None:
     console.print("[bold underline]Per-Agent Findings[/bold underline]")
     _print_agent_section("Security", result.security_result)
@@ -105,6 +122,17 @@ def _print_review_result(result: Any) -> None:
     console.print()
     console.print("[bold underline]Final Verdict[/bold underline]")
     _print_agent_section(f"PR #{result.pr_number}", result)
+
+
+@app.command()
+def doctor() -> None:
+    """Run setup/health checks (Settings, GitHub, OpenAI, ChromaDB) and report pass/fail."""
+    from core.doctor_service import run_doctor_checks  # lazy, same reasoning as ingest/review
+
+    result = _run(run_doctor_checks())
+    _print_doctor_result(result)
+    if not result.all_passed:
+        raise typer.Exit(code=1)
 
 
 @app.command()

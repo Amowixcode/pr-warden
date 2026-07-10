@@ -12,6 +12,7 @@ parallel and merged into one verdict.
 ```bash
 warden ingest owner/repo        # index a repo's issues, merged PRs, and commits into ChromaDB
 warden review owner/repo 123    # review PR #123 with full historical context
+warden doctor                   # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
 ```
 
 ## How a review works
