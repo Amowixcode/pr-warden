@@ -17,7 +17,7 @@ from agents.state import AgentResult, ReviewState
 from config.settings import settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
-from retrieval.context_builder import PRContext
+from retrieval.context_builder import PersistedAgentResult, PRContext, ReviewRecord
 
 _PATCH = "agents.quality_agent.{}"
 _NOW = datetime(2024, 6, 1, tzinfo=UTC)
@@ -77,17 +77,34 @@ def _make_node(text: str) -> NodeWithScore:
     return NodeWithScore(node=TextNode(text=text), score=0.9)
 
 
+def _make_review_record(head_sha: str = "abc1234", verdict: str = "COMMENT") -> ReviewRecord:
+    agent = PersistedAgentResult(summary="ok", verdict="APPROVE", issues=[], suggestions=[])
+    return ReviewRecord(
+        head_sha=head_sha,
+        verdict=verdict,
+        summary="Found a minor naming issue",
+        issues=[],
+        suggestions=[],
+        security_result=agent,
+        quality_result=agent,
+        test_result=agent,
+        reviewed_at=_NOW,
+    )
+
+
 def _make_context(
     issues: list[str] | None = None,
     prs: list[str] | None = None,
     commits: list[str] | None = None,
     linked_issues: list[IssueData] | None = None,
+    prior_review: ReviewRecord | None = None,
 ) -> PRContext:
     return PRContext(
         similar_issues=[_make_node(t) for t in (issues or [])],
         similar_prs=[_make_node(t) for t in (prs or [])],
         related_commits=[_make_node(t) for t in (commits or [])],
         linked_issues=linked_issues or [],
+        prior_review=prior_review,
     )
 
 
@@ -179,6 +196,28 @@ def test_build_input_shows_no_linked_issues_placeholder_when_empty() -> None:
     ctx = _make_context(linked_issues=[])
     result = _build_input(pr, ctx)
     assert "## Linked Issues\n(none)" in result
+
+
+def test_build_input_includes_incremental_review_block_when_prior_review_present() -> None:
+    prior = _make_review_record(head_sha="deadbeef1234", verdict="COMMENT")
+    pr = _make_pr()
+    ctx = _make_context(prior_review=prior)
+
+    result = _build_input(pr, ctx)
+
+    assert "## Incremental Review" in result
+    assert "deadbee" in result
+    assert "COMMENT" in result
+    assert "Found a minor naming issue" in result
+
+
+def test_build_input_omits_incremental_review_block_when_no_prior_review() -> None:
+    pr = _make_pr()
+    ctx = _make_context(prior_review=None)
+
+    result = _build_input(pr, ctx)
+
+    assert "## Incremental Review" not in result
 
 
 def test_build_input_passes_non_python_diff_through_unchanged() -> None:

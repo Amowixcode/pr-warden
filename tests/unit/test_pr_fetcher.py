@@ -9,6 +9,7 @@ from gh.client import GitHubClient
 from gh.pr_fetcher import (
     PRData,
     PRFile,
+    fetch_diff_since,
     fetch_linked_issues,
     fetch_pull_request,
     parse_linked_issue_numbers,
@@ -82,6 +83,7 @@ def _make_mock_pr(
     files: list[MagicMock],
     body: str | None = "Fixes the thing",
     commits: list[MagicMock] | None = None,
+    head_sha: str = "headsha123",
 ) -> MagicMock:
     pr = MagicMock()
     pr.number = 42
@@ -91,6 +93,7 @@ def _make_mock_pr(
     pr.user.login = "johndoe"
     pr.base.ref = "main"
     pr.head.ref = "fix-the-bug"
+    pr.head.sha = head_sha
     pr.created_at = _CREATED
     pr.updated_at = _UPDATED
     pr.get_files.return_value = files
@@ -128,6 +131,7 @@ async def test_fetch_pull_request_returns_correct_prdata() -> None:
     assert result.head_branch == "fix-the-bug"
     assert result.created_at == _CREATED
     assert result.updated_at == _UPDATED
+    assert result.head_sha == "headsha123"
     assert len(result.changed_files) == 1
 
     pr_file = result.changed_files[0]
@@ -310,3 +314,43 @@ async def test_fetch_linked_issues_fetches_all_referenced_numbers() -> None:
     results = await fetch_linked_issues(client, "o", "r", "Fixes #1, Closes #2")
 
     assert [i.number for i in results] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# fetch_diff_since
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_comparison(files: list[MagicMock]) -> MagicMock:
+    comparison = MagicMock()
+    comparison.files = files
+    return comparison
+
+
+async def test_fetch_diff_since_maps_comparison_files_into_diff() -> None:
+    changed = _make_mock_file(
+        filename="src/new_thing.py",
+        status="added",
+        additions=3,
+        deletions=0,
+        patch="@@ -0,0 +1,3 @@\n+def new_thing():\n+    pass",
+    )
+    mock_repo = MagicMock()
+    mock_repo.compare.return_value = _make_mock_comparison([changed])
+    client = _make_mock_client_with_repo(mock_repo)
+
+    result = await fetch_diff_since(client, "o", "r", "base-sha", "head-sha")
+
+    assert "diff --git a/src/new_thing.py b/src/new_thing.py" in result
+    assert "+def new_thing():" in result
+    mock_repo.compare.assert_called_once_with("base-sha", "head-sha")
+
+
+async def test_fetch_diff_since_empty_comparison_yields_empty_diff() -> None:
+    mock_repo = MagicMock()
+    mock_repo.compare.return_value = _make_mock_comparison([])
+    client = _make_mock_client_with_repo(mock_repo)
+
+    result = await fetch_diff_since(client, "o", "r", "same-sha", "same-sha")
+
+    assert result == ""

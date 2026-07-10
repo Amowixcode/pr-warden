@@ -66,7 +66,7 @@ def test_review_approve_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert "APPROVE" in result.stdout
     assert "Add tests" in result.stdout
-    mock.assert_awaited_once_with("octocat", "Hello-World", 7)
+    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=False)
 
 
 def test_review_request_changes_lists_issues(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,6 +223,147 @@ def test_review_json_flag_respects_exit_code(monkeypatch: pytest.MonkeyPatch) ->
     assert result.exit_code == 1
     data = json.loads(result.stdout)
     assert data["verdict"] == "REQUEST_CHANGES"
+
+
+def test_review_full_flag_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    runner.invoke(app, ["review", "octocat/Hello-World", "7", "--full"])
+
+    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=True)
+
+
+def test_review_default_full_flag_is_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=False)
+
+
+def test_review_shows_incremental_banner(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+            incremental=True,
+            cached=False,
+            prior_verdict="COMMENT",
+            prior_head_sha="deadbeef1234",
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert "Incremental review" in result.stdout
+    assert "deadbee" in result.stdout
+    assert "COMMENT" in result.stdout
+
+
+def test_review_shows_cached_banner(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+            incremental=True,
+            cached=True,
+            prior_verdict="APPROVE",
+            prior_head_sha="deadbeef1234",
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert "No new commits since last review" in result.stdout
+    assert "cached verdict" in result.stdout
+    assert "deadbee" in result.stdout
+
+
+def test_review_no_banner_for_ordinary_full_review(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert "Incremental review" not in result.stdout
+    assert "cached verdict" not in result.stdout
+
+
+def test_review_json_includes_incremental_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+            incremental=True,
+            cached=False,
+            prior_verdict="COMMENT",
+            prior_head_sha="deadbeef1234",
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7", "--json"])
+
+    data = json.loads(result.stdout)
+    assert data["incremental"] is True
+    assert data["cached"] is False
+    assert data["prior_verdict"] == "COMMENT"
+    assert data["prior_head_sha"] == "deadbeef1234"
 
 
 def test_print_agent_section_collapses_approve_with_no_issues(

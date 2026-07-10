@@ -11,7 +11,8 @@ parallel and merged into one verdict.
 
 ```bash
 warden ingest owner/repo             # index a repo's issues, merged PRs, and commits into ChromaDB
-warden review owner/repo 123         # review PR #123 with full historical context
+warden review owner/repo 123         # review PR #123 (incremental if reviewed before)
+warden review owner/repo 123 --full  # force a complete review, ignoring prior review history
 warden review owner/repo 123 --json  # same review as machine-readable JSON, for CI/tooling
 warden doctor                        # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
 ```
@@ -44,3 +45,12 @@ tooling).
 
 `warden review` exits non-zero (`1`) when the final verdict is `REQUEST_CHANGES`, and `0` for
 `APPROVE`/`COMMENT` — so it can gate a CI step on the review outcome.
+
+## Incremental review
+
+`warden review` persists the last-reviewed commit SHA and verdict for each PR locally
+(`./data/review_history.json` by default). On a later review of the same PR, only the diff
+since that commit is sent to the agents — the prior verdict is passed along as context so
+agents can focus on what's new. If nothing has changed since the last review, no agents (and no
+OpenAI calls) run at all; the cached verdict is returned directly. Pass `--full` to always do a
+complete review, ignoring history.
