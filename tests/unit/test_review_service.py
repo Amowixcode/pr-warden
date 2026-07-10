@@ -73,6 +73,7 @@ def _make_patches(
 ) -> dict:
     return {
         "fetch_pull_request": AsyncMock(return_value=pr),
+        "fetch_linked_issues": AsyncMock(return_value=[]),
         "build_pr_context": AsyncMock(return_value=context),
         "build_chroma_collection": MagicMock(return_value=MagicMock()),
         "build_vector_store_index": MagicMock(return_value=MagicMock()),
@@ -92,6 +93,7 @@ def _make_patches(
 def _apply(mocks: dict):
     return (
         patch(_PATCH.format("fetch_pull_request"), mocks["fetch_pull_request"]),
+        patch(_PATCH.format("fetch_linked_issues"), mocks["fetch_linked_issues"]),
         patch(_PATCH.format("build_pr_context"), mocks["build_pr_context"]),
         patch(_PATCH.format("build_chroma_collection"), mocks["build_chroma_collection"]),
         patch(_PATCH.format("build_vector_store_index"), mocks["build_vector_store_index"]),
@@ -116,6 +118,7 @@ async def test_review_pr_returns_review_result() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         result = await review_pr("owner", "repo", 7)
 
@@ -134,6 +137,7 @@ async def test_review_pr_pr_number_matches_input() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         result = await review_pr("owner", "repo", 42)
 
@@ -152,6 +156,7 @@ async def test_review_pr_fields_from_final_verdict() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         result = await review_pr("owner", "repo", 7)
 
@@ -173,6 +178,7 @@ async def test_review_pr_passes_pr_to_graph() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         await review_pr("owner", "repo", 7)
 
@@ -194,6 +200,7 @@ async def test_review_pr_passes_context_to_graph() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         await review_pr("owner", "repo", 7)
 
@@ -213,6 +220,7 @@ async def test_review_pr_carries_per_agent_results_through() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         result = await review_pr("owner", "repo", 7)
 
@@ -233,6 +241,7 @@ async def test_review_pr_initial_state_has_no_agent_results_yet() -> None:
         _apply(mocks)[4],
         _apply(mocks)[5],
         _apply(mocks)[6],
+        _apply(mocks)[7],
     ):
         await review_pr("owner", "repo", 7)
 
@@ -241,3 +250,29 @@ async def test_review_pr_initial_state_has_no_agent_results_yet() -> None:
     assert initial_state["quality_result"] is None
     assert initial_state["test_result"] is None
     assert initial_state["final_verdict"] is None
+
+
+async def test_review_pr_fetches_linked_issues_from_pr_body_and_threads_into_context() -> None:
+    pr = _make_pr(body="Fixes #27670 — the thing was crashing")
+    context = _make_context()
+    mocks = _make_patches(pr, context)
+    mocks["fetch_linked_issues"] = AsyncMock(return_value=["linked-issue-marker"])
+
+    with (
+        _apply(mocks)[0],
+        _apply(mocks)[1],
+        _apply(mocks)[2],
+        _apply(mocks)[3],
+        _apply(mocks)[4],
+        _apply(mocks)[5],
+        _apply(mocks)[6],
+        _apply(mocks)[7],
+    ):
+        await review_pr("owner", "repo", 7)
+
+    mocks["fetch_linked_issues"].assert_awaited_once()
+    call_args = mocks["fetch_linked_issues"].call_args.args
+    assert call_args[-1] == "Fixes #27670 — the thing was crashing"
+
+    build_context_kwargs = mocks["build_pr_context"].call_args.kwargs
+    assert build_context_kwargs["linked_issues"] == ["linked-issue-marker"]

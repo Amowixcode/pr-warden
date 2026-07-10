@@ -7,6 +7,7 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import NodeWithScore, TextNode
 
 from gh.pr_fetcher import PRData
+from gh.repo_fetcher import IssueData
 from retrieval.context_builder import PRContext, build_pr_context
 
 _PATCH = "retrieval.context_builder.retrieve"
@@ -32,6 +33,20 @@ def _make_pr(title: str = "Fix bug", body: str = "Details here") -> PRData:
 
 def _make_node(text: str = "node") -> NodeWithScore:
     return NodeWithScore(node=TextNode(text=text), score=0.9)
+
+
+def _make_issue(number: int = 1, title: str = "Linked bug") -> IssueData:
+    return IssueData(
+        number=number,
+        title=title,
+        body="Reproduction steps...",
+        state="open",
+        labels=["bug"],
+        author="reporter",
+        created_at=_NOW,
+        updated_at=_NOW,
+        closed_at=None,
+    )
 
 
 def _mock_retrieve(
@@ -138,3 +153,27 @@ async def test_build_pr_context_top_k_custom() -> None:
 
     top_k_values = {c.args[5] for c in mock_retrieve.call_args_list}
     assert top_k_values == {2}
+
+
+# ── linked_issues passthrough ───────────────────────────────────────────────
+
+
+async def test_build_pr_context_passes_through_linked_issues() -> None:
+    mock_index = MagicMock(spec=VectorStoreIndex)
+    issue = _make_issue(number=27670, title="Crash on mount")
+
+    with patch(_PATCH, _mock_retrieve([], [], [])):
+        result = await build_pr_context(
+            _make_pr(), mock_index, "owner", "repo", linked_issues=[issue]
+        )
+
+    assert result.linked_issues == [issue]
+
+
+async def test_build_pr_context_defaults_linked_issues_to_empty_list() -> None:
+    mock_index = MagicMock(spec=VectorStoreIndex)
+
+    with patch(_PATCH, _mock_retrieve([], [], [])):
+        result = await build_pr_context(_make_pr(), mock_index, "owner", "repo")
+
+    assert result.linked_issues == []
