@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import zip_longest
+
 from agents.state import AgentResult, ReviewState, Verdict
 
 _MAX_TOTAL_ISSUES = 5
@@ -16,6 +18,19 @@ def _merge_verdict(verdicts: list[Verdict]) -> Verdict:
     if "COMMENT" in verdicts:
         return "COMMENT"
     return "APPROVE"
+
+
+def _interleave(lists: list[list[str]]) -> list[str]:
+    """Round-robin merge across agent lists — item 0 from each list, then item 1, etc.
+
+    Ensures a single agent with many items can't crowd the others out once the merged result
+    is capped (e.g. security alone returning 3 suggestions must not push quality's and test's
+    suggestions out of a 3-item total cap).
+    """
+    merged: list[str] = []
+    for group in zip_longest(*lists):
+        merged.extend(item for item in group if item is not None)
+    return merged
 
 
 def _synthesize_summary(verdict: Verdict, flagged_by: list[str], total_issues: int) -> str:
@@ -36,7 +51,8 @@ def summarizer(state: ReviewState) -> dict[str, AgentResult]:
     writes.
 
     Deterministic merge, no OpenAI call: verdict follows the policy in _merge_verdict().
-    issues/suggestions are capped totals across all three agents (not an exhaustive
+    issues/suggestions are capped totals across all three agents, round-robin interleaved so
+    no single agent's list can crowd the others out of the cap (not an exhaustive
     concatenation), and summary is a synthesized one-liner naming which agents flagged
     something and how many issues in total — not each agent's own summary text repeated.
     """
@@ -47,17 +63,16 @@ def summarizer(state: ReviewState) -> dict[str, AgentResult]:
     ]
 
     verdict = _merge_verdict([result.verdict for _, result in named_results])
-    all_issues = [issue for _, result in named_results for issue in result.issues]
-    all_suggestions = [
-        suggestion for _, result in named_results for suggestion in result.suggestions
-    ]
+    total_issues = sum(len(result.issues) for _, result in named_results)
+    merged_issues = _interleave([result.issues for _, result in named_results])
+    merged_suggestions = _interleave([result.suggestions for _, result in named_results])
     flagged_by = [name for name, result in named_results if result.issues]
 
     return {
         "final_verdict": AgentResult(
-            summary=_synthesize_summary(verdict, flagged_by, len(all_issues)),
+            summary=_synthesize_summary(verdict, flagged_by, total_issues),
             verdict=verdict,
-            issues=all_issues[:_MAX_TOTAL_ISSUES],
-            suggestions=all_suggestions[:_MAX_TOTAL_SUGGESTIONS],
+            issues=merged_issues[:_MAX_TOTAL_ISSUES],
+            suggestions=merged_suggestions[:_MAX_TOTAL_SUGGESTIONS],
         )
     }
