@@ -32,6 +32,10 @@ Before including any issue that makes a specific, checkable claim about a code c
 line(s) for that construct and confirm the claim is true. If you cannot point to the specific \
 line(s) that support the claim, drop it or soften it into a general observation instead.
 
+Keep findings terse and bullet-style, never narrative paragraphs. Include a file and line \
+number in each issue when the diff makes one determinable (e.g. "gh/client.py:23 — ..."). \
+Return at most 3 suggestions — the most important ones only, omit minor nits.
+
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
   "summary": "<one short sentence; if there are no issues, a single short line like \
