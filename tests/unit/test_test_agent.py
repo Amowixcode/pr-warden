@@ -18,6 +18,7 @@ from agents.test_agent import (
 )
 from config.settings import settings
 from gh.pr_fetcher import PRData
+from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PRContext
 
 _PATCH = "agents.test_agent.{}"
@@ -38,6 +39,7 @@ def _make_pr(
     title: str = "Add retry logic",
     body: str = "Adds retry-with-backoff for transient errors.",
     diff: str = "diff --git a/client.py b/client.py\n+def _retry():\n+    pass",
+    commits: list[CommitData] | None = None,
 ) -> PRData:
     return PRData(
         number=number,
@@ -51,6 +53,27 @@ def _make_pr(
         updated_at=_NOW,
         changed_files=[],
         diff=diff,
+        commits=commits or [],
+    )
+
+
+def _make_commit(message: str, sha: str = "abc123") -> CommitData:
+    return CommitData(sha=sha, message=message, author="dev", committed_at=_NOW, url="")
+
+
+def _make_issue(
+    number: int = 1, title: str = "Missing edge-case coverage", body: str = "Repro steps"
+) -> IssueData:
+    return IssueData(
+        number=number,
+        title=title,
+        body=body,
+        state="open",
+        labels=["testing"],
+        author="reporter",
+        created_at=_NOW,
+        updated_at=_NOW,
+        closed_at=None,
     )
 
 
@@ -62,11 +85,13 @@ def _make_context(
     issues: list[str] | None = None,
     prs: list[str] | None = None,
     commits: list[str] | None = None,
+    linked_issues: list[IssueData] | None = None,
 ) -> PRContext:
     return PRContext(
         similar_issues=[_make_node(t) for t in (issues or [])],
         similar_prs=[_make_node(t) for t in (prs or [])],
         related_commits=[_make_node(t) for t in (commits or [])],
+        linked_issues=linked_issues or [],
     )
 
 
@@ -118,7 +143,46 @@ def test_build_input_empty_context_renders_none() -> None:
     pr = _make_pr()
     ctx = _make_context()
     result = _build_input(pr, ctx)
-    assert result.count("(none)") == 3
+    assert result.count("(none)") == 5
+
+
+def test_build_input_contains_commit_messages_of_varying_quality() -> None:
+    detailed = _make_commit(sha="aaa111", message="Add test coverage for the retry exhaustion path")
+    terse = _make_commit(sha="bbb222", message="tests")
+    pr = _make_pr(commits=[detailed, terse])
+    ctx = _make_context()
+
+    result = _build_input(pr, ctx)
+
+    assert "Add test coverage for the retry exhaustion path" in result
+    assert "tests" in result
+
+
+def test_build_input_shows_no_commits_placeholder_when_empty() -> None:
+    pr = _make_pr(commits=[])
+    ctx = _make_context()
+    result = _build_input(pr, ctx)
+    assert "### Commit Messages\n(none)" in result
+
+
+def test_build_input_contains_linked_issue_content() -> None:
+    issue = _make_issue(
+        number=27670, title="Missing edge-case coverage", body="Steps to reproduce..."
+    )
+    pr = _make_pr()
+    ctx = _make_context(linked_issues=[issue])
+
+    result = _build_input(pr, ctx)
+
+    assert "#27670: Missing edge-case coverage" in result
+    assert "Steps to reproduce..." in result
+
+
+def test_build_input_shows_no_linked_issues_placeholder_when_empty() -> None:
+    pr = _make_pr()
+    ctx = _make_context(linked_issues=[])
+    result = _build_input(pr, ctx)
+    assert "## Linked Issues\n(none)" in result
 
 
 # ── _call_openai ─────────────────────────────────────────────────────────────

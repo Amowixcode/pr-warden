@@ -8,6 +8,7 @@ from openai import OpenAI
 from agents.state import AgentResult, ReviewState
 from config.settings import settings
 from gh.pr_fetcher import PRData
+from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PRContext
 
 _OPENAI_MODEL = "gpt-4.1-mini"
@@ -47,6 +48,18 @@ def _format_nodes(nodes: list[NodeWithScore]) -> str:
     return "\n\n---\n\n".join(n.node.get_content() for n in nodes)
 
 
+def _format_commits(commits: list[CommitData]) -> str:
+    if not commits:
+        return "(none)"
+    return "\n".join(f"- {c.message.splitlines()[0]}" for c in commits)
+
+
+def _format_linked_issues(issues: list[IssueData]) -> str:
+    if not issues:
+        return "(none)"
+    return "\n\n---\n\n".join(f"#{i.number}: {i.title}\n{i.body}" for i in issues)
+
+
 def _build_input(pr: PRData, context: PRContext) -> str:
     """Build the test-adequacy-review input from PR data and retrieval context."""
     return f"""\
@@ -58,8 +71,14 @@ Branch: {pr.head_branch} → {pr.base_branch}
 ### Description
 {pr.body}
 
+### Commit Messages
+{_format_commits(pr.commits)}
+
 ### Diff
 {pr.diff}
+
+## Linked Issues
+{_format_linked_issues(context.linked_issues)}
 
 ## Historical Context
 

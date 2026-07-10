@@ -6,7 +6,7 @@ from agents.graph import graph
 from agents.state import AgentResult, ReviewState
 from config.settings import settings
 from gh.client import GitHubClient
-from gh.pr_fetcher import fetch_pull_request
+from gh.pr_fetcher import fetch_linked_issues, fetch_pull_request
 from ingestion.embedder import get_embed_model
 from ingestion.vector_store import build_chroma_collection, build_vector_store_index
 from retrieval.context_builder import build_pr_context
@@ -40,12 +40,13 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
     """
     client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
+    linked_issues = await fetch_linked_issues(client, owner, repo, pr.body)
 
     collection = build_chroma_collection()
     embed_model = get_embed_model()
     index = build_vector_store_index(collection, embed_model)
 
-    context = await build_pr_context(pr, index, owner, repo)
+    context = await build_pr_context(pr, index, owner, repo, linked_issues=linked_issues)
 
     initial_state: ReviewState = {
         "pr": pr,

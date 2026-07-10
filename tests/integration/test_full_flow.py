@@ -122,6 +122,22 @@ def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
                 }
             ],
         ),
+        (
+            "GET",
+            f"{_REPO_URL}/pulls/7/commits",
+        ): (
+            {},
+            [
+                {
+                    "sha": "d" * 40,
+                    "commit": {
+                        "message": "Add retry-with-backoff for transient GitHub API errors",
+                        "author": {"name": "dave", "date": "2026-02-01T00:00:00Z"},
+                    },
+                    "html_url": f"{_REPO_URL}/commit/{'d' * 40}",
+                }
+            ],
+        ),
     }
 
 
