@@ -43,7 +43,50 @@ def test_ingest_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert "Hello-World" in result.stdout
     assert "15" in result.stdout
-    mock.assert_awaited_once_with("octocat", "Hello-World")
+    mock.assert_awaited_once_with("octocat", "Hello-World", full=False)
+
+
+def test_ingest_full_flag_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=IngestResult(
+            issues_indexed=0, prs_indexed=0, commits_indexed=0, total_newly_indexed=0
+        )
+    )
+    monkeypatch.setattr("core.ingest_service.ingest_repository", mock)
+
+    runner.invoke(app, ["ingest", "octocat/Hello-World", "--full"])
+
+    mock.assert_awaited_once_with("octocat", "Hello-World", full=True)
+
+
+def test_ingest_shows_incremental_banner(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=IngestResult(
+            issues_indexed=1,
+            prs_indexed=0,
+            commits_indexed=2,
+            total_newly_indexed=3,
+            incremental=True,
+        )
+    )
+    monkeypatch.setattr("core.ingest_service.ingest_repository", mock)
+
+    result = runner.invoke(app, ["ingest", "octocat/Hello-World"])
+
+    assert "Incremental ingest" in result.stdout
+
+
+def test_ingest_no_banner_for_ordinary_full_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=IngestResult(
+            issues_indexed=1, prs_indexed=0, commits_indexed=2, total_newly_indexed=3
+        )
+    )
+    monkeypatch.setattr("core.ingest_service.ingest_repository", mock)
+
+    result = runner.invoke(app, ["ingest", "octocat/Hello-World"])
+
+    assert "Incremental ingest" not in result.stdout
 
 
 def test_review_approve_verdict(monkeypatch: pytest.MonkeyPatch) -> None:

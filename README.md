@@ -10,7 +10,8 @@ parallel and merged into one verdict.
 ## Usage
 
 ```bash
-warden ingest owner/repo             # index a repo's issues, merged PRs, and commits into ChromaDB
+warden ingest owner/repo             # index a repo (incremental if ingested before)
+warden ingest owner/repo --full      # force a complete re-ingestion, ignoring ingest history
 warden review owner/repo 123         # review PR #123 with full historical context
 warden review owner/repo 123 --json  # same review as machine-readable JSON, for CI/tooling
 warden doctor                        # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
@@ -19,7 +20,10 @@ warden doctor                        # run setup/health checks (GitHub token, Op
 ## How a review works
 
 1. `warden ingest` pulls issues, merged PRs, and commits from GitHub and embeds them into
-   ChromaDB.
+   ChromaDB. It persists the last-ingested timestamp per repo (`./data/ingest_history.json` by
+   default); a later `warden ingest` of the same repo only fetches items created or updated
+   since that run — the existing dedup-on-insert check still applies regardless. Pass `--full`
+   to force a complete re-fetch.
 2. `warden review` fetches the target PR, retrieves related historical context, then runs three
    specialist agents in parallel, each backed by its own OpenAI call:
    - **Security** — hardcoded secrets/credentials, injection risks, unsafe deserialization,

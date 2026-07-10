@@ -58,6 +58,11 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
 
 
 def _print_ingest_result(owner: str, repo: str, result: Any) -> None:
+    if result.incremental:
+        console.print(
+            "[bold cyan]Incremental ingest — fetching only items updated since the last "
+            "run.[/bold cyan]"
+        )
     table = Table(title=f"Ingested {owner}/{repo}", header_style="bold cyan")
     table.add_column("Category")
     table.add_column("Newly Indexed", justify="right")
@@ -148,12 +153,22 @@ def doctor() -> None:
 @app.command()
 def ingest(
     repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
+    full: Annotated[
+        bool,
+        typer.Option(
+            "--full", help="Force a complete re-ingestion, ignoring any prior ingest history"
+        ),
+    ] = False,
 ) -> None:
-    """Index a repository's issues, merged PRs, and commits into ChromaDB."""
+    """Index a repository's issues, merged PRs, and commits into ChromaDB.
+
+    Incremental by default: if this repo was ingested before, only items created or updated
+    since that ingest are fetched. Pass --full to always do a complete re-ingestion.
+    """
     owner, name = _parse_repo(repo)
     from core.ingest_service import ingest_repository  # lazy: avoid Settings() at --help time
 
-    result = _run(ingest_repository(owner, name))
+    result = _run(ingest_repository(owner, name, full=full))
     _print_ingest_result(owner, name, result)
 
 

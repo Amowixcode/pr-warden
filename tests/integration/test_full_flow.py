@@ -171,6 +171,7 @@ def test_ingest_then_review_full_flow(
     github_api: dict[tuple[str, str], tuple[dict, object]],
     openai_api: OpenAIMock,
     isolated_chroma: None,
+    isolated_ingest_history: None,
 ) -> None:
     github_api.update(_github_fixtures())
 

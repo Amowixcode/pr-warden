@@ -51,6 +51,7 @@ async def fetch_issues(
     name: str,
     state: str = "all",
     limit: int = 100,
+    since: datetime | None = None,
 ) -> list[IssueData]:
     """Fetch issues from a repository, excluding pull requests.
 
@@ -63,6 +64,8 @@ async def fetch_issues(
         name: Repository name.
         state: Issue state filter — ``"open"``, ``"closed"``, or ``"all"``.
         limit: Maximum number of issues to return.
+        since: When given, only issues updated at or after this time are fetched — filtered
+            server-side by GitHub's issues API (``since`` matches on ``updated_at``).
 
     Returns:
         A list of IssueData objects, capped at ``limit``.
@@ -70,7 +73,8 @@ async def fetch_issues(
 
     def _fetch_sync() -> list[IssueData]:
         repo = client.get_repo(owner, name)
-        raw = repo.get_issues(state=state, sort="created", direction="desc")
+        since_kwargs = {"since": since} if since is not None else {}
+        raw = repo.get_issues(state=state, sort="created", direction="desc", **since_kwargs)
         results: list[IssueData] = []
         for issue in itertools.islice(raw, limit * 2):  # over-fetch to account for filtered PRs
             if issue.pull_request is not None:
@@ -100,6 +104,7 @@ async def fetch_merged_prs(
     owner: str,
     name: str,
     limit: int = 100,
+    since: datetime | None = None,
 ) -> list[MergedPRData]:
     """Fetch merged pull requests for historical context.
 
@@ -111,6 +116,11 @@ async def fetch_merged_prs(
         owner: GitHub user or organisation owning the repository.
         name: Repository name.
         limit: Maximum number of merged PRs to return.
+        since: When given, only PRs updated at or after this time are fetched. GitHub's "list
+            pull requests" endpoint has no server-side date filter (unlike issues/commits), so
+            this is a client-side early exit: fetched sorted by most-recently-updated first,
+            stopping as soon as a PR's updated_at falls at or before ``since`` — everything
+            after that point in updated-desc order is strictly older.
 
     Returns:
         A list of MergedPRData objects, capped at ``limit``.
@@ -118,9 +128,12 @@ async def fetch_merged_prs(
 
     def _fetch_sync() -> list[MergedPRData]:
         repo = client.get_repo(owner, name)
-        raw = repo.get_pulls(state="closed", sort="created", direction="desc")
+        sort = "updated" if since is not None else "created"
+        raw = repo.get_pulls(state="closed", sort=sort, direction="desc")
         results: list[MergedPRData] = []
         for pr in itertools.islice(raw, limit * 2):  # over-fetch to account for unmerged closed PRs
+            if since is not None and pr.updated_at <= since:
+                break
             if pr.merged_at is None:
                 continue
             results.append(
@@ -146,6 +159,7 @@ async def fetch_recent_commits(
     owner: str,
     name: str,
     limit: int = 200,
+    since: datetime | None = None,
 ) -> list[CommitData]:
     """Fetch the most recent commits from the default branch.
 
@@ -156,6 +170,8 @@ async def fetch_recent_commits(
         owner: GitHub user or organisation owning the repository.
         name: Repository name.
         limit: Maximum number of commits to return.
+        since: When given, only commits authored at or after this time are fetched — filtered
+            server-side by GitHub's commits API.
 
     Returns:
         A list of CommitData objects, capped at ``limit``.
@@ -163,7 +179,8 @@ async def fetch_recent_commits(
 
     def _fetch_sync() -> list[CommitData]:
         repo = client.get_repo(owner, name)
-        raw = repo.get_commits()
+        since_kwargs = {"since": since} if since is not None else {}
+        raw = repo.get_commits(**since_kwargs)
         results: list[CommitData] = []
         for commit in itertools.islice(raw, limit):
             results.append(

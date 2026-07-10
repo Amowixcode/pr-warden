@@ -150,3 +150,13 @@ def isolated_chroma(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     monkeypatch.setattr(settings, "chroma_persist_dir", str(tmp_path / "chroma"))
     monkeypatch.setattr(settings, "chroma_collection_name", "integration_test")
+
+
+@pytest.fixture
+def isolated_ingest_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the ingest-history store at a tmp_path so the test never touches the real file
+    (and never picks up a leftover record from a previous local test/dev run).
+    """
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "ingest_history_path", str(tmp_path / "ingest_history.json"))
