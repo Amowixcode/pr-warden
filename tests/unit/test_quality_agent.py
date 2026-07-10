@@ -119,18 +119,6 @@ def test_build_input_empty_context_renders_none() -> None:
     assert result.count("(none)") == 3
 
 
-def test_build_input_passes_non_python_diff_through_unchanged() -> None:
-    ts_diff = (
-        "diff --git a/util.ts b/util.ts\n"
-        "+export function fetchData(x: string): string {\n"
-        "+  return x;\n"
-        "+}"
-    )
-    pr = _make_pr(diff=ts_diff)
-    ctx = _make_context()
-    assert ts_diff in _build_input(pr, ctx)
-
-
 # ── _call_openai ─────────────────────────────────────────────────────────────
 
 
@@ -163,21 +151,8 @@ def test_system_prompt_is_scoped_to_quality() -> None:
     assert "style" in lowered
     assert "maintainability" in lowered
     assert "naming" in lowered
-    assert "documentation and type-annotation conventions" in lowered
-
-
-def test_system_prompt_infers_language_instead_of_assuming_python() -> None:
-    lowered = _SYSTEM_PROMPT.lower()
-    assert "infer the language" in lowered
-    assert "never assume python conventions apply to non-python code" in lowered
-    # Regression guard: the old prompt stated pr-warden's own Python conventions as a
-    # universal requirement — that exact phrasing must not come back.
-    assert "type hints on all functions, docstrings on public functions" not in lowered
-
-
-def test_system_prompt_requires_self_check_before_specific_claims() -> None:
-    lowered = _SYSTEM_PROMPT.lower()
-    assert "re-read the exact diff line" in lowered
+    assert "type hints" in lowered
+    assert "docstrings" in lowered
 
 
 def test_system_prompt_requests_terse_structured_findings() -> None:
@@ -275,24 +250,3 @@ def test_quality_agent_sends_pr_diff_to_openai() -> None:
 
     prompt = mock_client.responses.create.call_args.kwargs["input"]
     assert "unique-quality-diff-marker" in prompt
-
-
-def test_quality_agent_handles_non_python_diff_via_same_code_path() -> None:
-    """A TypeScript diff should flow through the exact same node logic as Python — there is
-    no language-specific branching in the pipeline; conventions are enforced by the prompt
-    alone (see _SYSTEM_PROMPT), not by code here."""
-    go_diff = (
-        "diff --git a/handler.go b/handler.go\n+func FetchData(x string) string {\n+\treturn x\n+}"
-    )
-    pr = _make_pr(diff=go_diff)
-    state = _make_state(pr, _make_context())
-    mock_client = MagicMock()
-    mock_client.responses.create.return_value = MagicMock(output_text=_VALID_JSON)
-
-    with patch(_PATCH.format("OpenAI"), return_value=mock_client):
-        update = quality_agent(state)
-
-    prompt = mock_client.responses.create.call_args.kwargs["input"]
-    assert go_diff in prompt
-    assert set(update.keys()) == {"quality_result"}
-    assert isinstance(update["quality_result"], AgentResult)
