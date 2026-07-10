@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 from collections.abc import Coroutine
 from typing import Annotated, Any, NoReturn, TypeVar
@@ -124,6 +125,15 @@ def _print_review_result(result: Any) -> None:
     _print_agent_section(f"PR #{result.pr_number}", result)
 
 
+def _print_review_result_json(result: Any) -> None:
+    """Print the review result as machine-readable JSON only — no Rich panels mixed in.
+
+    Rich auto-detects a non-tty stdout (e.g. piped to jq) and disables ANSI color/highlighting,
+    so this stays clean, valid JSON when piped.
+    """
+    console.print_json(data=dataclasses.asdict(result))
+
+
 @app.command()
 def doctor() -> None:
     """Run setup/health checks (Settings, GitHub, OpenAI, ChromaDB) and report pass/fail."""
@@ -151,10 +161,23 @@ def ingest(
 def review(
     repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
     pr_number: Annotated[int, typer.Argument(help="Pull request number to review", min=1)],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output machine-readable JSON instead of Rich-formatted text"),
+    ] = False,
 ) -> None:
-    """Review a pull request using historical repo context and OpenAI."""
+    """Review a pull request using historical repo context and OpenAI.
+
+    Exits non-zero when the final verdict is REQUEST_CHANGES, so this can gate a CI step.
+    """
     owner, name = _parse_repo(repo)
     from core.review_service import review_pr  # lazy, same reasoning as ingest
 
     result = _run(review_pr(owner, name, pr_number))
-    _print_review_result(result)
+    if json_output:
+        _print_review_result_json(result)
+    else:
+        _print_review_result(result)
+
+    if result.verdict == "REQUEST_CHANGES":
+        raise typer.Exit(code=1)

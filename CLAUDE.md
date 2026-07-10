@@ -8,7 +8,8 @@ then runs parallel agents (security, quality, test) backed by OpenAI to review p
 
 CLI commands:
 - `warden ingest <owner/repo>` — index a repo
-- `warden review <owner/repo> <pr_number>` — review a PR
+- `warden review <owner/repo> <pr_number>` — review a PR (exits non-zero on REQUEST_CHANGES;
+  `--json` for machine-readable output)
 - `warden doctor` — run setup/health checks
 
 ## Architecture principle

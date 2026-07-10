@@ -188,7 +188,8 @@ def test_ingest_then_review_full_flow(
     assert "3" in ingest_result.output  # total newly indexed: 1 issue + 1 PR + 1 commit
 
     review_result = runner.invoke(app, ["review", "acme/widgets", "7"])
-    assert review_result.exit_code == 0, review_result.output
+    # REQUEST_CHANGES must fail a CI step (cli/main.py exits 1), not just print.
+    assert review_result.exit_code == 1, review_result.output
     # The merge policy (agents/summarizer.py) must propagate REQUEST_CHANGES since the
     # security agent flagged it, even though quality and test both approved.
     assert "REQUEST_CHANGES" in review_result.output
