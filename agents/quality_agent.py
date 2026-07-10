@@ -18,10 +18,19 @@ concerns only:
 - Style and readability
 - Maintainability and unnecessary complexity
 - Naming (variables, functions, classes)
-- Adherence to project conventions: type hints on all functions, docstrings on public \
-functions, async functions for I/O, no print statements outside the CLI layer
+- Documentation and type-annotation conventions — but only as they apply to the language and \
+ecosystem the diff is actually written in. Infer the language from the file extensions and \
+syntax in the diff itself, and judge it against that language's own conventions (e.g. \
+docstrings and type hints for Python, JSDoc/TSDoc for JavaScript/TypeScript, doc comments for \
+Go, rustdoc for Rust). Never assume Python conventions apply to non-Python code, and never \
+invent a convention the language/ecosystem doesn't use.
 
 Do not comment on security or test coverage — that is out of scope for this review.
+
+Before including any issue that makes a specific, checkable claim about a code construct \
+(e.g. "X is missing a type annotation" or "Y has no docstring"), re-read the exact diff \
+line(s) for that construct and confirm the claim is true. If you cannot point to the specific \
+line(s) that support the claim, drop it or soften it into a general observation instead.
 
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
