@@ -173,7 +173,7 @@ def test_summarizer_empty_issues_and_suggestions_when_all_clean() -> None:
     assert result.suggestions == []
 
 
-def test_summarizer_summary_includes_each_agent_summary() -> None:
+def test_summarizer_all_clean_summary_is_synthesized_not_concatenated() -> None:
     state = _make_state(
         _result(summary="No secrets found"),
         _result(summary="Naming is inconsistent"),
@@ -182,9 +182,62 @@ def test_summarizer_summary_includes_each_agent_summary() -> None:
 
     result = summarizer(state)["final_verdict"]
 
-    assert "No secrets found" in result.summary
-    assert "Naming is inconsistent" in result.summary
-    assert "Missing edge-case tests" in result.summary
+    # None of the agents' own summary text should appear verbatim — the summary is a
+    # synthesized sentence about the (clean) outcome, not a concatenation of their text.
+    assert "No secrets found" not in result.summary
+    assert "Naming is inconsistent" not in result.summary
+    assert "Missing edge-case tests" not in result.summary
+    assert result.summary == "No blocking concerns from security, quality, or test coverage review."
+
+
+def test_summarizer_flagged_summary_names_agents_and_issue_count() -> None:
+    state = _make_state(
+        _result(verdict="REQUEST_CHANGES", issues=["Hardcoded secret"]),
+        _result(verdict="APPROVE"),
+        _result(verdict="COMMENT", issues=["No edge-case test"]),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert result.summary == "REQUEST_CHANGES — 2 issues flagged by security, test coverage."
+
+
+def test_summarizer_flagged_summary_singular_issue_wording() -> None:
+    state = _make_state(
+        _result(verdict="REQUEST_CHANGES", issues=["Hardcoded secret"]),
+        _result(verdict="APPROVE"),
+        _result(verdict="APPROVE"),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert result.summary == "REQUEST_CHANGES — 1 issue flagged by security."
+
+
+def test_summarizer_caps_total_issues() -> None:
+    state = _make_state(
+        _result(issues=["a", "b", "c"]),
+        _result(issues=["d", "e"]),
+        _result(issues=["f", "g"]),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert len(result.issues) == 5
+    assert result.issues == ["a", "b", "c", "d", "e"]
+
+
+def test_summarizer_caps_total_suggestions() -> None:
+    state = _make_state(
+        _result(suggestions=["a", "b"]),
+        _result(suggestions=["c", "d"]),
+        _result(suggestions=["e", "f"]),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert len(result.suggestions) == 3
+    assert result.suggestions == ["a", "b", "c"]
 
 
 @pytest.mark.parametrize(

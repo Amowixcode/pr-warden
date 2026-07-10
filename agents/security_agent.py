@@ -24,12 +24,17 @@ only:
 Do not comment on code style, performance, or test coverage — that is out of scope for this \
 review.
 
+Keep findings terse and bullet-style, never narrative paragraphs. Include a file and line \
+number in each issue when the diff makes one determinable (e.g. "gh/client.py:23 — ..."). \
+Return at most 3 suggestions — the most important ones only, omit minor nits.
+
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
-  "summary": "<2-3 sentence overview of security-relevant findings, or lack thereof>",
+  "summary": "<one short sentence; if there are no issues, a single short line like \
+'No security concerns found.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific security issue found>", ...],
-  "suggestions": ["<security improvement suggestion>", ...]
+  "issues": ["<file:line — short, specific security issue>", ...],
+  "suggestions": ["<short, specific security improvement suggestion>", ...]
 }"""
 
 

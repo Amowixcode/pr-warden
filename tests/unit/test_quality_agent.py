@@ -155,6 +155,14 @@ def test_system_prompt_is_scoped_to_quality() -> None:
     assert "docstrings" in lowered
 
 
+def test_system_prompt_requests_terse_structured_findings() -> None:
+    lowered = _SYSTEM_PROMPT.lower()
+    assert "terse" in lowered
+    assert "file" in lowered and "line" in lowered
+    assert "at most 3 suggestions" in lowered
+    assert "single short line" in lowered
+
+
 # ── _parse_response ──────────────────────────────────────────────────────────
 
 
