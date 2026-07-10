@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from agents.state import AgentResult
 from cli.main import _parse_repo, _print_agent_section, app
+from core.doctor_service import CheckResult, DoctorResult
 from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
@@ -171,6 +172,48 @@ def test_print_agent_section_caps_suggestions_shown(capsys: pytest.CaptureFixtur
     assert "s3" in captured
     assert "s4" not in captured
     assert "s5" not in captured
+
+
+def test_doctor_all_passed_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=DoctorResult(
+            checks=[
+                CheckResult("Settings: github_token", True, "present"),
+                CheckResult("Settings: openai_api_key", True, "present"),
+                CheckResult("GitHub API", True, "authenticated"),
+                CheckResult("OpenAI API", True, "authenticated"),
+                CheckResult("ChromaDB", True, "accessible at './data/chroma'"),
+            ]
+        )
+    )
+    monkeypatch.setattr("core.doctor_service.run_doctor_checks", mock)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "PASS" in result.stdout
+    assert "All checks passed" in result.stdout
+
+
+def test_doctor_one_failure_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=DoctorResult(
+            checks=[
+                CheckResult("Settings: github_token", True, "present"),
+                CheckResult("Settings: openai_api_key", True, "present"),
+                CheckResult("GitHub API", False, "unreachable or unauthorized (GithubException)"),
+                CheckResult("OpenAI API", True, "authenticated"),
+                CheckResult("ChromaDB", True, "accessible at './data/chroma'"),
+            ]
+        )
+    )
+    monkeypatch.setattr("core.doctor_service.run_doctor_checks", mock)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "FAIL" in result.stdout
+    assert "GitHub API" in result.stdout
 
 
 def test_invalid_repo_format_missing_slash() -> None:
