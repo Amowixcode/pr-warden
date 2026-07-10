@@ -9,7 +9,7 @@ from openai import OpenAIError
 from typer.testing import CliRunner
 
 from agents.state import AgentResult
-from cli.main import _parse_repo, app
+from cli.main import _parse_repo, _print_agent_section, app
 from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
@@ -126,6 +126,51 @@ def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "Missing a docstring" in result.stdout
     assert "No edge-case coverage" in result.stdout
     assert "Final Verdict" in result.stdout
+
+
+def test_print_agent_section_collapses_approve_with_no_issues(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _agent_result(verdict="APPROVE", summary="No concerns found.", issues=[])
+
+    _print_agent_section("Security", result)
+
+    captured = capsys.readouterr().out
+    assert "APPROVE" in captured
+    assert "No concerns found." in captured
+    assert "Issues" not in captured
+    assert "Suggestions" not in captured
+    assert "No issues found." not in captured
+    assert "No suggestions." not in captured
+
+
+def test_print_agent_section_shows_full_panel_when_verdict_not_approve(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _agent_result(verdict="COMMENT", summary="A minor note.", issues=[])
+
+    _print_agent_section("Quality", result)
+
+    captured = capsys.readouterr().out
+    assert "No issues found." in captured
+    assert "No suggestions." in captured
+
+
+def test_print_agent_section_caps_suggestions_shown(capsys: pytest.CaptureFixture[str]) -> None:
+    result = _agent_result(
+        verdict="COMMENT",
+        issues=["one issue"],
+        suggestions=["s1", "s2", "s3", "s4", "s5"],
+    )
+
+    _print_agent_section("Test Coverage", result)
+
+    captured = capsys.readouterr().out
+    assert "s1" in captured
+    assert "s2" in captured
+    assert "s3" in captured
+    assert "s4" not in captured
+    assert "s5" not in captured
 
 
 def test_invalid_repo_format_missing_slash() -> None:

@@ -34,10 +34,11 @@ line(s) that support the claim, drop it or soften it into a general observation 
 
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
-  "summary": "<2-3 sentence overview of code-quality findings, or lack thereof>",
+  "summary": "<one short sentence; if there are no issues, a single short line like \
+'No code-quality concerns found.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific code-quality issue found>", ...],
-  "suggestions": ["<code-quality improvement suggestion>", ...]
+  "issues": ["<file:line — short, specific code-quality issue>", ...],
+  "suggestions": ["<short, specific code-quality improvement suggestion>", ...]
 }"""
 
 

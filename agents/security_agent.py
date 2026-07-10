@@ -34,10 +34,11 @@ line(s) that support the claim, drop it or soften it into a general observation 
 
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
-  "summary": "<2-3 sentence overview of security-relevant findings, or lack thereof>",
+  "summary": "<one short sentence; if there are no issues, a single short line like \
+'No security concerns found.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific security issue found>", ...],
-  "suggestions": ["<security improvement suggestion>", ...]
+  "issues": ["<file:line — short, specific security issue>", ...],
+  "suggestions": ["<short, specific security improvement suggestion>", ...]
 }"""
 
 

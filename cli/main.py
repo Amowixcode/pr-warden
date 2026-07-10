@@ -21,6 +21,7 @@ err_console = Console(stderr=True)
 
 _T = TypeVar("_T")
 _VERDICT_STYLE = {"APPROVE": "bold green", "REQUEST_CHANGES": "bold red", "COMMENT": "bold yellow"}
+_MAX_SUGGESTIONS = 3
 
 
 def _parse_repo(repo: str) -> tuple[str, str]:
@@ -70,9 +71,18 @@ def _print_agent_section(title: str, result: Any) -> None:
     """Print a Panel + Issues + Suggestions block for anything with those four fields.
 
     Shared by each per-agent AgentResult and the final aggregated ReviewResult — both have the
-    same summary/verdict/issues/suggestions shape.
+    same summary/verdict/issues/suggestions shape. When there's nothing to flag (APPROVE, no
+    issues), collapses to a single line instead of an empty panel plus empty section headers —
+    matches how terse real-world PR-review tools stay quiet when there's nothing to say.
     """
     style = _VERDICT_STYLE.get(result.verdict, "bold white")
+
+    if result.verdict == "APPROVE" and not result.issues:
+        console.print(f"[{style}]✓ {title}  {result.verdict}[/{style}] — {result.summary}")
+        for suggestion in result.suggestions[:_MAX_SUGGESTIONS]:
+            console.print(f"    ↳ {suggestion}")
+        return
+
     header = f"{title}  [{style}]{result.verdict}[/{style}]"
     console.print(Panel(result.summary, title=header, border_style=style))
 
@@ -80,10 +90,9 @@ def _print_agent_section(title: str, result: Any) -> None:
     for issue in result.issues:
         console.print(f"  • {issue}")
 
-    console.print(
-        "[bold]Suggestions[/bold]" if result.suggestions else "[dim]No suggestions.[/dim]"
-    )
-    for suggestion in result.suggestions:
+    suggestions = result.suggestions[:_MAX_SUGGESTIONS]
+    console.print("[bold]Suggestions[/bold]" if suggestions else "[dim]No suggestions.[/dim]")
+    for suggestion in suggestions:
         console.print(f"  • {suggestion}")
 
 

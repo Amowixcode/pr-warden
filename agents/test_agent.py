@@ -29,10 +29,11 @@ instead.
 
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
-  "summary": "<2-3 sentence overview of test-coverage findings, or lack thereof>",
+  "summary": "<one short sentence; if there are no issues, a single short line like \
+'Adequately tested.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific test-coverage gap found>", ...],
-  "suggestions": ["<test-coverage improvement suggestion>", ...]
+  "issues": ["<file:line — short, specific test-coverage gap>", ...],
+  "suggestions": ["<short, specific test-coverage improvement suggestion>", ...]
 }"""
 
 
