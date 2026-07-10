@@ -160,3 +160,11 @@ def isolated_ingest_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     from config.settings import settings
 
     monkeypatch.setattr(settings, "ingest_history_path", str(tmp_path / "ingest_history.json"))
+
+
+@pytest.fixture
+def isolated_review_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the review-history store at a tmp_path so the test never touches the real file."""
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "review_history_path", str(tmp_path / "review_history.json"))

@@ -120,6 +120,19 @@ def _print_doctor_result(result: Any) -> None:
 
 
 def _print_review_result(result: Any) -> None:
+    if result.cached:
+        console.print(
+            f"[bold cyan]No new commits since last review "
+            f"(commit {result.prior_head_sha[:7]}) — showing cached verdict.[/bold cyan]"
+        )
+        console.print()
+    elif result.incremental:
+        console.print(
+            f"[bold cyan]Incremental review — since commit {result.prior_head_sha[:7]}, "
+            f"prior verdict: {result.prior_verdict}.[/bold cyan]"
+        )
+        console.print()
+
     console.print("[bold underline]Per-Agent Findings[/bold underline]")
     _print_agent_section("Security", result.security_result)
     _print_agent_section("Quality", result.quality_result)
@@ -180,15 +193,25 @@ def review(
         bool,
         typer.Option("--json", help="Output machine-readable JSON instead of Rich-formatted text"),
     ] = False,
+    full: Annotated[
+        bool,
+        typer.Option(
+            "--full", help="Force a complete review, ignoring any prior incremental review history"
+        ),
+    ] = False,
 ) -> None:
     """Review a pull request using historical repo context and OpenAI.
+
+    Incremental by default: if this PR was reviewed before, only the diff since the last
+    review is sent to the agents (or, if nothing changed, the cached result is returned with
+    no new API calls). Pass --full to always do a complete review.
 
     Exits non-zero when the final verdict is REQUEST_CHANGES, so this can gate a CI step.
     """
     owner, name = _parse_repo(repo)
     from core.review_service import review_pr  # lazy, same reasoning as ingest
 
-    result = _run(review_pr(owner, name, pr_number))
+    result = _run(review_pr(owner, name, pr_number, full=full))
     if json_output:
         _print_review_result_json(result)
     else:

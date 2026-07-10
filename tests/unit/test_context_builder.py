@@ -8,7 +8,12 @@ from llama_index.core.schema import NodeWithScore, TextNode
 
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import IssueData
-from retrieval.context_builder import PRContext, build_pr_context
+from retrieval.context_builder import (
+    PersistedAgentResult,
+    PRContext,
+    ReviewRecord,
+    build_pr_context,
+)
 
 _PATCH = "retrieval.context_builder.retrieve"
 
@@ -46,6 +51,21 @@ def _make_issue(number: int = 1, title: str = "Linked bug") -> IssueData:
         created_at=_NOW,
         updated_at=_NOW,
         closed_at=None,
+    )
+
+
+def _make_review_record(head_sha: str = "abc123") -> ReviewRecord:
+    agent = PersistedAgentResult(summary="ok", verdict="APPROVE", issues=[], suggestions=[])
+    return ReviewRecord(
+        head_sha=head_sha,
+        verdict="APPROVE",
+        summary="Looks good",
+        issues=[],
+        suggestions=[],
+        security_result=agent,
+        quality_result=agent,
+        test_result=agent,
+        reviewed_at=_NOW,
     )
 
 
@@ -177,3 +197,27 @@ async def test_build_pr_context_defaults_linked_issues_to_empty_list() -> None:
         result = await build_pr_context(_make_pr(), mock_index, "owner", "repo")
 
     assert result.linked_issues == []
+
+
+# ── prior_review passthrough ────────────────────────────────────────────────
+
+
+async def test_build_pr_context_passes_through_prior_review() -> None:
+    mock_index = MagicMock(spec=VectorStoreIndex)
+    record = _make_review_record(head_sha="deadbeef")
+
+    with patch(_PATCH, _mock_retrieve([], [], [])):
+        result = await build_pr_context(
+            _make_pr(), mock_index, "owner", "repo", prior_review=record
+        )
+
+    assert result.prior_review == record
+
+
+async def test_build_pr_context_defaults_prior_review_to_none() -> None:
+    mock_index = MagicMock(spec=VectorStoreIndex)
+
+    with patch(_PATCH, _mock_retrieve([], [], [])):
+        result = await build_pr_context(_make_pr(), mock_index, "owner", "repo")
+
+    assert result.prior_review is None

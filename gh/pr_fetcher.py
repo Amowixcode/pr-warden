@@ -38,6 +38,7 @@ class PRData(BaseModel):
     changed_files: list[PRFile]
     diff: str
     commits: list[CommitData] = Field(default_factory=list)
+    head_sha: str = ""
 
 
 def _build_diff(pr_files: list[PRFile]) -> str:
@@ -124,7 +125,49 @@ async def fetch_pull_request(
             changed_files=changed_files,
             diff=_build_diff(changed_files),
             commits=commits,
+            head_sha=pr.head.sha,
         )
+
+    return await asyncio.to_thread(_fetch_sync)
+
+
+async def fetch_diff_since(
+    client: GitHubClient,
+    owner: str,
+    name: str,
+    base_sha: str,
+    head_sha: str,
+) -> str:
+    """Diff between an arbitrary base SHA and head SHA, for incremental re-review.
+
+    Unlike ``fetch_pull_request``'s diff (always base-branch-to-head), this pins to whatever
+    SHA was last reviewed — computed via GitHub's compare API, not the PR's own base branch.
+
+    Args:
+        client: An initialised GitHubClient.
+        owner: GitHub user or organisation owning the repository.
+        name: Repository name.
+        base_sha: The commit SHA last reviewed.
+        head_sha: The PR's current HEAD commit SHA.
+
+    Returns:
+        A diff string in the same format as ``PRData.diff``.
+    """
+
+    def _fetch_sync() -> str:
+        repo = client.get_repo(owner, name)
+        comparison = repo.compare(base_sha, head_sha)
+        files = [
+            PRFile(
+                filename=f.filename,
+                status=f.status,
+                additions=f.additions,
+                deletions=f.deletions,
+                patch=f.patch,
+            )
+            for f in comparison.files
+        ]
+        return _build_diff(files)
 
     return await asyncio.to_thread(_fetch_sync)
 

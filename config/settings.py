@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./data/chroma"
     chroma_collection_name: str = "pr_warden"
     ingest_history_path: str = "./data/ingest_history.json"
+    review_history_path: str = "./data/review_history.json"
     openai_max_retries: int = 3
     github_max_retries: int = 3
 
