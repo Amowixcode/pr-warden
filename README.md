@@ -10,9 +10,10 @@ parallel and merged into one verdict.
 ## Usage
 
 ```bash
-warden ingest owner/repo        # index a repo's issues, merged PRs, and commits into ChromaDB
-warden review owner/repo 123    # review PR #123 with full historical context
-warden doctor                   # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
+warden ingest owner/repo             # index a repo's issues, merged PRs, and commits into ChromaDB
+warden review owner/repo 123         # review PR #123 with full historical context
+warden review owner/repo 123 --json  # same review as machine-readable JSON, for CI/tooling
+warden doctor                        # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
 ```
 
 ## How a review works
@@ -37,4 +38,9 @@ See [`agents/README.md`](agents/README.md) for the full graph design and merge p
 
 `warden review` prints a **Per-Agent Findings** section — one panel per agent, each with its own
 verdict, issues, and suggestions — followed by a **Final Verdict** section with the merged
-result for the PR as a whole.
+result for the PR as a whole. Pass `--json` to print that same information as a single JSON
+document on stdout instead (nothing else is printed, so it pipes cleanly into `jq` or other
+tooling).
+
+`warden review` exits non-zero (`1`) when the final verdict is `REQUEST_CHANGES`, and `0` for
+`APPROVE`/`COMMENT` — so it can gate a CI step on the review outcome.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -85,7 +86,8 @@ def test_review_request_changes_lists_issues(monkeypatch: pytest.MonkeyPatch) ->
 
     result = runner.invoke(app, ["review", "octocat/Hello-World", "9"])
 
-    assert result.exit_code == 0
+    # REQUEST_CHANGES must fail a CI step, not just print — non-zero exit is the whole point.
+    assert result.exit_code == 1
     assert "REQUEST_CHANGES" in result.stdout
     assert "bug A" in result.stdout
     assert "bug B" in result.stdout
@@ -118,7 +120,7 @@ def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> Non
 
     result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Per-Agent Findings" in result.stdout
     assert "Security" in result.stdout
     assert "Quality" in result.stdout
@@ -127,6 +129,100 @@ def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "Missing a docstring" in result.stdout
     assert "No edge-case coverage" in result.stdout
     assert "Final Verdict" in result.stdout
+
+
+def test_review_exits_zero_on_comment_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=11,
+            summary="Minor notes only",
+            verdict="COMMENT",
+            issues=[],
+            suggestions=["Consider renaming this variable"],
+            security_result=_agent_result(),
+            quality_result=_agent_result(verdict="COMMENT"),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "11"])
+
+    assert result.exit_code == 0
+    assert "COMMENT" in result.stdout
+
+
+def test_review_json_flag_outputs_expected_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=["Add tests"],
+            security_result=_agent_result(summary="No secrets found"),
+            quality_result=_agent_result(summary="Clean"),
+            test_result=_agent_result(summary="Well covered"),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7", "--json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["pr_number"] == 7
+    assert data["summary"] == "Looks good"
+    assert data["verdict"] == "APPROVE"
+    assert data["issues"] == []
+    assert data["suggestions"] == ["Add tests"]
+    for key in ("security_result", "quality_result", "test_result"):
+        assert set(data[key].keys()) == {"summary", "verdict", "issues", "suggestions"}
+    assert data["security_result"]["summary"] == "No secrets found"
+
+
+def test_review_json_flag_omits_human_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7", "--json"])
+
+    assert "Per-Agent Findings" not in result.stdout
+    assert "Final Verdict" not in result.stdout
+    json.loads(result.stdout)  # still parses cleanly as a single JSON document
+
+
+def test_review_json_flag_respects_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=9,
+            summary="Needs work",
+            verdict="REQUEST_CHANGES",
+            issues=["bug A"],
+            suggestions=[],
+            security_result=_agent_result(verdict="REQUEST_CHANGES", issues=["bug A"]),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "9", "--json"])
+
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["verdict"] == "REQUEST_CHANGES"
 
 
 def test_print_agent_section_collapses_approve_with_no_issues(
