@@ -152,6 +152,12 @@ def test_system_prompt_is_scoped_to_security() -> None:
     assert "injection" in lowered
     assert "deserialization" in lowered
     assert "authentication" in lowered or "authorization" in lowered
+    assert "prompt injection" in lowered
+
+
+def test_system_prompt_requires_self_check_before_specific_claims() -> None:
+    lowered = _SYSTEM_PROMPT.lower()
+    assert "re-read the exact diff line" in lowered
 
 
 # ── _parse_response ──────────────────────────────────────────────────────────

@@ -155,6 +155,11 @@ def test_system_prompt_is_scoped_to_test_adequacy() -> None:
     assert "edge case" in lowered
 
 
+def test_system_prompt_requires_self_check_before_specific_claims() -> None:
+    lowered = _SYSTEM_PROMPT.lower()
+    assert "re-read the exact diff line" in lowered
+
+
 # ── _parse_response ──────────────────────────────────────────────────────────
 
 

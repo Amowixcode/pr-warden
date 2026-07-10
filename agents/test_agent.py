@@ -21,6 +21,12 @@ concerns only:
 
 Do not comment on security, style, naming, or complexity — that is out of scope for this review.
 
+Before including any issue that makes a specific, checkable claim about a code construct \
+(e.g. "X has no test covering the error path" or "Y's edge case is untested"), re-read the \
+exact diff line(s) for that construct and confirm the claim is true. If you cannot point to \
+the specific line(s) that support the claim, drop it or soften it into a general observation \
+instead.
+
 Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
 {
   "summary": "<2-3 sentence overview of test-coverage findings, or lack thereof>",
