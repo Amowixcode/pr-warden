@@ -223,8 +223,10 @@ def test_summarizer_caps_total_issues() -> None:
 
     result = summarizer(state)["final_verdict"]
 
+    # Round-robin interleaved (a,d,f / b,e,g / c,...) then capped at 5 — not a flat
+    # concatenation, so security's 3rd item ("c") doesn't get priority over quality/test.
     assert len(result.issues) == 5
-    assert result.issues == ["a", "b", "c", "d", "e"]
+    assert result.issues == ["a", "d", "f", "b", "e"]
 
 
 def test_summarizer_caps_total_suggestions() -> None:
@@ -236,8 +238,31 @@ def test_summarizer_caps_total_suggestions() -> None:
 
     result = summarizer(state)["final_verdict"]
 
+    # Round-robin interleaved (a,c,e / b,d,f) then capped at 3 — one from each agent, not
+    # security's first two crowding out quality's and test's.
     assert len(result.suggestions) == 3
-    assert result.suggestions == ["a", "b", "c"]
+    assert result.suggestions == ["a", "c", "e"]
+
+
+def test_summarizer_suggestions_include_all_agents_when_one_agent_has_many() -> None:
+    """Regression test for the PR #36982 bug: security alone returned enough suggestions to
+    fill the total cap, silently dropping quality's and test's suggestions entirely from the
+    Final Verdict. Uses distinct, uniquely identifiable per-agent strings so any future
+    mix-up (wrong agent's list substituted, or one agent crowding out the others) is caught
+    immediately rather than passing by coincidence.
+    """
+    state = _make_state(
+        _result(suggestions=["SECURITY-1", "SECURITY-2", "SECURITY-3"]),
+        _result(suggestions=["QUALITY-1"]),
+        _result(suggestions=["TEST-1"]),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert any(s.startswith("SECURITY-") for s in result.suggestions)
+    assert any(s.startswith("QUALITY-") for s in result.suggestions)
+    assert any(s.startswith("TEST-") for s in result.suggestions)
+    assert result.suggestions == ["SECURITY-1", "QUALITY-1", "TEST-1"]
 
 
 @pytest.mark.parametrize(
