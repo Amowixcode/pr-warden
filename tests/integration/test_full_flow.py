@@ -209,7 +209,7 @@ def test_ingest_then_review_full_flow(
     assert "Commits" in ingest_result.output
     assert "3" in ingest_result.output  # total newly indexed: 1 issue + 1 PR + 1 commit
 
-    review_result = runner.invoke(app, ["review", "acme/widgets", "7"])
+    review_result = runner.invoke(app, ["review", "acme/widgets", "7", "--verbose"])
     # REQUEST_CHANGES must fail a CI step (cli/main.py exits 1), not just print.
     assert review_result.exit_code == 1, review_result.output
     # The merge policy (agents/summarizer.py) must propagate REQUEST_CHANGES since the

@@ -161,7 +161,7 @@ def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     monkeypatch.setattr("core.review_service.review_pr", mock)
 
-    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7", "--verbose"])
 
     assert result.exit_code == 1
     assert "Per-Agent Findings" in result.stdout
@@ -172,6 +172,41 @@ def test_review_shows_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "Missing a docstring" in result.stdout
     assert "No edge-case coverage" in result.stdout
     assert "Final Verdict" in result.stdout
+
+
+def test_review_default_hides_per_agent_findings(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Overall needs work",
+            verdict="REQUEST_CHANGES",
+            issues=["Hardcoded secret", "Missing docstring", "No edge-case test"],
+            suggestions=[],
+            security_result=_agent_result(
+                verdict="REQUEST_CHANGES",
+                summary="Found a hardcoded secret",
+                issues=["Hardcoded secret"],
+            ),
+            quality_result=_agent_result(
+                verdict="COMMENT", summary="Missing a docstring", issues=["Missing docstring"]
+            ),
+            test_result=_agent_result(
+                verdict="COMMENT",
+                summary="No edge-case coverage",
+                issues=["No edge-case test"],
+            ),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert result.exit_code == 1
+    assert "Per-Agent Findings" not in result.stdout
+    assert "Final Verdict" in result.stdout
+    assert "Hardcoded secret" in result.stdout
+    assert "Missing docstring" in result.stdout
+    assert "No edge-case test" in result.stdout
 
 
 def test_review_exits_zero_on_comment_verdict(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,7 +11,8 @@ CLI commands:
   (`--full` to ignore ingest history)
 - `warden review <owner/repo> <pr_number>` — review a PR, incremental by default since the
   last review (exits non-zero on REQUEST_CHANGES; `--json` for machine-readable output;
-  `--full` to ignore review history)
+  `--full` to ignore review history; `--verbose` to also show per-agent findings, hidden by
+  default to avoid duplicating the Final Verdict)
 - `warden doctor` — run setup/health checks
 
 ## Architecture principle
