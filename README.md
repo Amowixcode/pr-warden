@@ -10,12 +10,13 @@ parallel and merged into one verdict.
 ## Usage
 
 ```bash
-warden ingest owner/repo             # index a repo (incremental if ingested before)
-warden ingest owner/repo --full      # force a complete re-ingestion, ignoring ingest history
-warden review owner/repo 123         # review PR #123 (incremental if reviewed before)
-warden review owner/repo 123 --full  # force a complete review, ignoring prior review history
-warden review owner/repo 123 --json  # same review as machine-readable JSON, for CI/tooling
-warden doctor                        # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
+warden ingest owner/repo               # index a repo (incremental if ingested before)
+warden ingest owner/repo --full        # force a complete re-ingestion, ignoring ingest history
+warden review owner/repo 123           # review PR #123 (incremental if reviewed before)
+warden review owner/repo 123 --full    # force a complete review, ignoring prior review history
+warden review owner/repo 123 --json    # same review as machine-readable JSON, for CI/tooling
+warden review owner/repo 123 --verbose # also show each agent's own findings, not just the merged verdict
+warden doctor                          # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
 ```
 
 ## How a review works
@@ -35,17 +36,21 @@ warden doctor                        # run setup/health checks (GitHub token, Op
      cases are considered, whether existing tests were updated when the behavior they cover
      changed.
 3. A summarizer merges the three findings into one final verdict: `REQUEST_CHANGES` if any agent
-   flagged an issue, else `COMMENT` if any agent had a non-blocking issue, else `APPROVE`.
+   flagged an issue, else `COMMENT` if any agent had a non-blocking issue, else `APPROVE`. A
+   non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`) — this
+   is enforced at merge time even if an individual agent's own verdict and issues list disagree.
 
 See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
 
 ## Output format
 
-`warden review` prints a **Per-Agent Findings** section — one panel per agent, each with its own
-verdict, issues, and suggestions — followed by a **Final Verdict** section with the merged
-result for the PR as a whole. Pass `--json` to print that same information as a single JSON
-document on stdout instead (nothing else is printed, so it pipes cleanly into `jq` or other
-tooling).
+`warden review` prints a **Final Verdict** section — the merged verdict, issues, and
+suggestions for the PR as a whole. By default that's the only section shown, so the same
+findings aren't printed twice; pass `--verbose` to also show a **Per-Agent Findings** section
+(one panel per agent, with its own verdict, issues, and suggestions) above it. Pass `--json` to
+print the full result (both levels) as a single JSON document on stdout instead (nothing else
+is printed, so it pipes cleanly into `jq` or other tooling) — `--json` output always includes
+the per-agent breakdown regardless of `--verbose`.
 
 `warden review` exits non-zero (`1`) when the final verdict is `REQUEST_CHANGES`, and `0` for
 `APPROVE`/`COMMENT` — so it can gate a CI step on the review outcome.

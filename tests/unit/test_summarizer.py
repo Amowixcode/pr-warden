@@ -54,29 +54,46 @@ def _make_state(security: AgentResult, quality: AgentResult, test: AgentResult) 
 
 
 def test_merge_verdict_all_approve() -> None:
-    assert _merge_verdict(["APPROVE", "APPROVE", "APPROVE"]) == "APPROVE"
+    assert _merge_verdict(["APPROVE", "APPROVE", "APPROVE"], has_issues=False) == "APPROVE"
 
 
 def test_merge_verdict_one_requests_changes() -> None:
-    assert _merge_verdict(["APPROVE", "REQUEST_CHANGES", "APPROVE"]) == "REQUEST_CHANGES"
+    verdicts = ["APPROVE", "REQUEST_CHANGES", "APPROVE"]
+    assert _merge_verdict(verdicts, has_issues=False) == "REQUEST_CHANGES"
 
 
 def test_merge_verdict_one_comment_only() -> None:
-    assert _merge_verdict(["APPROVE", "COMMENT", "APPROVE"]) == "COMMENT"
+    assert _merge_verdict(["APPROVE", "COMMENT", "APPROVE"], has_issues=False) == "COMMENT"
 
 
 def test_merge_verdict_mixed_comment_and_request_changes() -> None:
-    assert _merge_verdict(["COMMENT", "REQUEST_CHANGES", "APPROVE"]) == "REQUEST_CHANGES"
+    verdicts = ["COMMENT", "REQUEST_CHANGES", "APPROVE"]
+    assert _merge_verdict(verdicts, has_issues=False) == "REQUEST_CHANGES"
 
 
 def test_merge_verdict_all_request_changes() -> None:
-    assert _merge_verdict(["REQUEST_CHANGES", "REQUEST_CHANGES", "REQUEST_CHANGES"]) == (
-        "REQUEST_CHANGES"
-    )
+    verdicts = ["REQUEST_CHANGES", "REQUEST_CHANGES", "REQUEST_CHANGES"]
+    assert _merge_verdict(verdicts, has_issues=False) == "REQUEST_CHANGES"
 
 
 def test_merge_verdict_all_comment() -> None:
-    assert _merge_verdict(["COMMENT", "COMMENT", "COMMENT"]) == "COMMENT"
+    assert _merge_verdict(["COMMENT", "COMMENT", "COMMENT"], has_issues=False) == "COMMENT"
+
+
+def test_merge_verdict_bumps_approve_to_comment_when_has_issues() -> None:
+    """Safety net: even if every agent's own verdict says APPROVE, a non-empty merged issues
+    list must never surface as an APPROVE verdict.
+    """
+    verdicts = ["APPROVE", "APPROVE", "APPROVE"]
+    assert _merge_verdict(verdicts, has_issues=True) == "COMMENT"
+
+
+def test_merge_verdict_request_changes_still_wins_when_has_issues() -> None:
+    """has_issues only ever bumps APPROVE up to COMMENT — it must not downgrade an existing
+    REQUEST_CHANGES.
+    """
+    verdicts = ["REQUEST_CHANGES", "APPROVE", "APPROVE"]
+    assert _merge_verdict(verdicts, has_issues=True) == "REQUEST_CHANGES"
 
 
 # ── summarizer (node) ────────────────────────────────────────────────────────
@@ -282,4 +299,31 @@ def test_summarizer_verdict_matches_merge_policy(verdicts: tuple[str, str, str])
 
     result = summarizer(state)["final_verdict"]
 
-    assert result.verdict == _merge_verdict(list(verdicts))
+    assert result.verdict == _merge_verdict(list(verdicts), has_issues=False)
+
+
+def test_summarizer_bumps_approve_to_comment_when_agent_has_issues() -> None:
+    """Regression test for the PR #36994 bug: the quality agent returned verdict APPROVE
+    alongside 3 legitimate, non-hallucinated issues, and that inconsistency propagated straight
+    through to the Final Verdict. The merge layer must catch this even when every agent's own
+    verdict says APPROVE.
+    """
+    state = _make_state(
+        _result(verdict="APPROVE"),
+        _result(
+            verdict="APPROVE",
+            summary="Some minor style points.",
+            issues=[
+                "Missing comment explaining the numeric check",
+                "require() call inside beforeEach instead of at module scope",
+                "Test names are too vague to describe what they verify",
+            ],
+        ),
+        _result(verdict="APPROVE"),
+    )
+
+    result = summarizer(state)["final_verdict"]
+
+    assert result.verdict == "COMMENT"
+    assert len(result.issues) == 3
+    assert "Missing comment explaining the numeric check" in result.issues

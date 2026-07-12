@@ -119,7 +119,7 @@ def _print_doctor_result(result: Any) -> None:
         err_console.print("[bold red]One or more checks failed.[/bold red]")
 
 
-def _print_review_result(result: Any) -> None:
+def _print_review_result(result: Any, verbose: bool = False) -> None:
     if result.cached:
         console.print(
             f"[bold cyan]No new commits since last review "
@@ -133,12 +133,13 @@ def _print_review_result(result: Any) -> None:
         )
         console.print()
 
-    console.print("[bold underline]Per-Agent Findings[/bold underline]")
-    _print_agent_section("Security", result.security_result)
-    _print_agent_section("Quality", result.quality_result)
-    _print_agent_section("Test Coverage", result.test_result)
+    if verbose:
+        console.print("[bold underline]Per-Agent Findings[/bold underline]")
+        _print_agent_section("Security", result.security_result)
+        _print_agent_section("Quality", result.quality_result)
+        _print_agent_section("Test Coverage", result.test_result)
+        console.print()
 
-    console.print()
     console.print("[bold underline]Final Verdict[/bold underline]")
     _print_agent_section(f"PR #{result.pr_number}", result)
 
@@ -199,12 +200,23 @@ def review(
             "--full", help="Force a complete review, ignoring any prior incremental review history"
         ),
     ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Also show each agent's individual findings, not just the merged Final Verdict",
+        ),
+    ] = False,
 ) -> None:
     """Review a pull request using historical repo context and OpenAI.
 
     Incremental by default: if this PR was reviewed before, only the diff since the last
     review is sent to the agents (or, if nothing changed, the cached result is returned with
     no new API calls). Pass --full to always do a complete review.
+
+    Default output shows only the merged Final Verdict, to avoid printing the same
+    issues/suggestions twice. Pass --verbose to also show each agent's own findings.
 
     Exits non-zero when the final verdict is REQUEST_CHANGES, so this can gate a CI step.
     """
@@ -215,7 +227,7 @@ def review(
     if json_output:
         _print_review_result_json(result)
     else:
-        _print_review_result(result)
+        _print_review_result(result, verbose=verbose)
 
     if result.verdict == "REQUEST_CHANGES":
         raise typer.Exit(code=1)

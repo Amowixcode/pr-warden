@@ -8,14 +8,19 @@ _MAX_TOTAL_ISSUES = 5
 _MAX_TOTAL_SUGGESTIONS = 3
 
 
-def _merge_verdict(verdicts: list[Verdict]) -> Verdict:
+def _merge_verdict(verdicts: list[Verdict], has_issues: bool) -> Verdict:
     """REQUEST_CHANGES if any agent flags it, else COMMENT if any has non-blocking issues.
 
-    Else (all APPROVE) -> APPROVE.
+    Also COMMENT (never APPROVE) when the merged issues list is non-empty, even if every
+    agent's own verdict said APPROVE — an agent's verdict and its own issues list aren't
+    always internally consistent (an agent can return APPROVE while still listing issues), so
+    this is enforced as a safety net at merge time rather than trusted from each agent.
+
+    Else (all APPROVE, no issues) -> APPROVE.
     """
     if "REQUEST_CHANGES" in verdicts:
         return "REQUEST_CHANGES"
-    if "COMMENT" in verdicts:
+    if "COMMENT" in verdicts or has_issues:
         return "COMMENT"
     return "APPROVE"
 
@@ -62,8 +67,10 @@ def summarizer(state: ReviewState) -> dict[str, AgentResult]:
         ("test coverage", state["test_result"]),
     ]
 
-    verdict = _merge_verdict([result.verdict for _, result in named_results])
     total_issues = sum(len(result.issues) for _, result in named_results)
+    verdict = _merge_verdict(
+        [result.verdict for _, result in named_results], has_issues=total_issues > 0
+    )
     merged_issues = _interleave([result.issues for _, result in named_results])
     merged_suggestions = _interleave([result.suggestions for _, result in named_results])
     flagged_by = [name for name, result in named_results if result.issues]
