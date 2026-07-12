@@ -22,11 +22,18 @@ from retrieval.context_builder import PersistedAgentResult, PRContext, ReviewRec
 _PATCH = "agents.security_agent.{}"
 _NOW = datetime(2024, 6, 1, tzinfo=UTC)
 
+_DEFAULT_DIFF = "diff --git a/payments.py b/payments.py\n+API_KEY = 'sk_live_abc123'"
+
 _VALID_JSON = json.dumps(
     {
         "summary": "Found a hardcoded API key.",
         "verdict": "REQUEST_CHANGES",
-        "issues": ["Hardcoded API key in config.py line 12"],
+        "issues": [
+            {
+                "issue": "Hardcoded API key in config.py line 12",
+                "evidence": "API_KEY = 'sk_live_abc123'",
+            }
+        ],
         "suggestions": ["Move the key to an environment variable"],
     }
 )
@@ -269,19 +276,27 @@ def test_system_prompt_requests_terse_structured_findings() -> None:
     assert "single short line" in lowered
 
 
+def test_system_prompt_requires_evidence_field() -> None:
+    lowered = _SYSTEM_PROMPT.lower()
+    assert '"evidence"' in lowered
+    assert "copied verbatim from the diff" in lowered
+    assert "automatically discarded" in lowered
+
+
 # ── _parse_response ──────────────────────────────────────────────────────────
 
 
 def test_parse_response_maps_all_fields() -> None:
+    diff = "diff --git a/app.py b/app.py\n+eval(user_input)"
     raw = json.dumps(
         {
             "summary": "Uses eval() on user input",
             "verdict": "REQUEST_CHANGES",
-            "issues": ["Command injection via eval()"],
+            "issues": [{"issue": "Command injection via eval()", "evidence": "eval(user_input)"}],
             "suggestions": ["Replace eval() with ast.literal_eval()"],
         }
     )
-    result = _parse_response(raw)
+    result = _parse_response(raw, diff)
 
     assert isinstance(result, AgentResult)
     assert result.summary == "Uses eval() on user input"
@@ -292,26 +307,108 @@ def test_parse_response_maps_all_fields() -> None:
 
 def test_parse_response_strips_json_code_fence() -> None:
     raw = "```json\n" + _VALID_JSON + "\n```"
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.verdict == "REQUEST_CHANGES"
 
 
 def test_parse_response_strips_plain_code_fence() -> None:
     raw = "```\n" + _VALID_JSON + "\n```"
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.verdict == "REQUEST_CHANGES"
 
 
 def test_parse_response_issues_defaults_to_empty_list() -> None:
     raw = json.dumps({"summary": "No concerns found.", "verdict": "APPROVE"})
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.issues == []
 
 
 def test_parse_response_suggestions_defaults_to_empty_list() -> None:
     raw = json.dumps({"summary": "No concerns found.", "verdict": "APPROVE"})
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.suggestions == []
+
+
+def test_parse_response_drops_issue_with_fabricated_evidence() -> None:
+    """The acceptance criteria's required test: an issue whose evidence isn't a verbatim
+    substring of the diff must be filtered out, not shown.
+    """
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [
+                {
+                    "issue": "Hardcoded API key in config.py line 12",
+                    "evidence": "API_KEY = os.environ['STRIPE_KEY']",
+                }
+            ],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_keeps_issue_with_verified_evidence() -> None:
+    result = _parse_response(_VALID_JSON, _DEFAULT_DIFF)
+    assert result.issues == ["Hardcoded API key in config.py line 12"]
+
+
+def test_parse_response_drops_issue_missing_evidence_field() -> None:
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [{"issue": "Hardcoded API key in config.py line 12"}],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_drops_issue_that_is_not_an_object() -> None:
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": ["Hardcoded API key in config.py line 12"],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_drops_pr_36794_style_hallucination() -> None:
+    """Regression test for the actual PR #36794 hallucination: the agent claimed a
+    bridge?.shutdown() call was commented out, when the real diff shows it as live code with
+    an explanatory comment on the line above. The fabricated evidence (claiming a commented-out
+    form) doesn't appear verbatim in the real diff, so the mechanical check must drop it.
+    """
+    diff = (
+        "diff --git a/packages/react-devtools-extensions/src/main/index.js "
+        "b/packages/react-devtools-extensions/src/main/index.js\n"
+        "+  // Cleanly shut down the bridge so the panel can reconnect on reload.\n"
+        "+  bridge?.shutdown();\n"
+    )
+    raw = json.dumps(
+        {
+            "summary": "Found a dead code path.",
+            "verdict": "COMMENT",
+            "issues": [
+                {
+                    "issue": "index.js:460-475 — the else branch that calls bridge.shutdown() "
+                    "is commented out",
+                    "evidence": "// bridge?.shutdown();",
+                }
+            ],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, diff)
+    assert result.issues == []
 
 
 # ── security_agent (node) ────────────────────────────────────────────────────
@@ -356,3 +453,29 @@ def test_security_agent_sends_pr_diff_to_openai() -> None:
 
     prompt = mock_client.responses.create.call_args.kwargs["input"]
     assert "unique-security-diff-marker" in prompt
+
+
+def test_security_agent_drops_issues_with_evidence_not_in_diff() -> None:
+    """Confirms end-to-end that verification runs against state["pr"].diff specifically —
+    not the full prompt (which also contains commit messages, linked issues, historical
+    context) or some other text.
+    """
+    pr = _make_pr(diff="diff --git a/payments.py b/payments.py\n+charge(amount)")
+    state = _make_state(pr, _make_context())
+    fabricated_json = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [
+                {"issue": "Hardcoded secret found", "evidence": "API_KEY = 'sk_live_abc123'"}
+            ],
+            "suggestions": [],
+        }
+    )
+    mock_client = MagicMock()
+    mock_client.responses.create.return_value = MagicMock(output_text=fabricated_json)
+
+    with patch(_PATCH.format("OpenAI"), return_value=mock_client):
+        update = security_agent(state)
+
+    assert update["security_result"].issues == []
