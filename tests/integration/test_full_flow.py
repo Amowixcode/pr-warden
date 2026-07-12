@@ -146,8 +146,12 @@ def _github_fixtures() -> dict[tuple[str, str], tuple[dict, object]]:
 
 
 def _agent_response_body(
-    verdict: str, summary: str, issues: list[str], suggestions: list[str]
+    verdict: str, summary: str, issues: list[dict], suggestions: list[str]
 ) -> dict:
+    """issues is the new {"issue": ..., "evidence": ...} object shape — evidence must be a
+    verbatim substring of the diff actually sent to the agent for the issue to survive the
+    mechanical evidence-verification check in agents/*_agent.py::_verify_issues.
+    """
     output_text = json.dumps(
         {"summary": summary, "verdict": verdict, "issues": issues, "suggestions": suggestions}
     )
@@ -185,7 +189,12 @@ def test_ingest_then_review_full_flow(
         _agent_response_body(
             verdict="REQUEST_CHANGES",
             summary="Found a hardcoded token.",
-            issues=["Hardcoded GitHub token in gh/client.py"],
+            issues=[
+                {
+                    "issue": "Hardcoded GitHub token in gh/client.py",
+                    "evidence": "from github import GithubRetry",
+                }
+            ],
             suggestions=["Move the token to an environment variable"],
         ),
     )

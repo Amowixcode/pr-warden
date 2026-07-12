@@ -35,6 +35,12 @@ warden doctor                          # run setup/health checks (GitHub token, 
    - **Test coverage** — whether new or changed logic has corresponding tests, whether edge
      cases are considered, whether existing tests were updated when the behavior they cover
      changed.
+
+   Each issue an agent reports must include a verbatim quote of the diff line(s) it's based
+   on; before the issue ever reaches you, a plain Python substring check confirms that quote
+   actually appears in the diff (not another LLM call) — issues that fail this check are
+   dropped and logged rather than shown, catching hallucinated claims the prompt's own
+   self-check instruction misses.
 3. A summarizer merges the three findings into one final verdict: `REQUEST_CHANGES` if any agent
    flagged an issue, else `COMMENT` if any agent had a non-blocking issue, else `APPROVE`. A
    non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`) — this

@@ -24,11 +24,18 @@ from retrieval.context_builder import PersistedAgentResult, PRContext, ReviewRec
 _PATCH = "agents.test_agent.{}"
 _NOW = datetime(2024, 6, 1, tzinfo=UTC)
 
+_DEFAULT_DIFF = "diff --git a/client.py b/client.py\n+def _retry():\n+    pass"
+
 _VALID_JSON = json.dumps(
     {
         "summary": "New retry logic has no tests covering the exhausted-retries path.",
         "verdict": "REQUEST_CHANGES",
-        "issues": ["No test for the case where all retries are exhausted"],
+        "issues": [
+            {
+                "issue": "No test for the case where all retries are exhausted",
+                "evidence": "def _retry():",
+            }
+        ],
         "suggestions": ["Add a test asserting the exception raised after max_retries"],
     }
 )
@@ -263,19 +270,27 @@ def test_system_prompt_requires_self_check_before_specific_claims() -> None:
     assert "re-read the exact diff line" in lowered
 
 
+def test_system_prompt_requires_evidence_field() -> None:
+    lowered = _SYSTEM_PROMPT.lower()
+    assert '"evidence"' in lowered
+    assert "copied verbatim from the diff" in lowered
+    assert "automatically discarded" in lowered
+
+
 # ── _parse_response ──────────────────────────────────────────────────────────
 
 
 def test_parse_response_maps_all_fields() -> None:
+    diff = "diff --git a/util.py b/util.py\n+def divide(a, b):\n+    return a / b"
     raw = json.dumps(
         {
             "summary": "No tests for the new error path.",
             "verdict": "REQUEST_CHANGES",
-            "issues": ["No test for empty-list input"],
+            "issues": [{"issue": "No test for empty-list input", "evidence": "def divide(a, b):"}],
             "suggestions": ["Add a test for the empty-list edge case"],
         }
     )
-    result = _parse_response(raw)
+    result = _parse_response(raw, diff)
 
     assert isinstance(result, AgentResult)
     assert result.summary == "No tests for the new error path."
@@ -286,26 +301,108 @@ def test_parse_response_maps_all_fields() -> None:
 
 def test_parse_response_strips_json_code_fence() -> None:
     raw = "```json\n" + _VALID_JSON + "\n```"
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.verdict == "REQUEST_CHANGES"
 
 
 def test_parse_response_strips_plain_code_fence() -> None:
     raw = "```\n" + _VALID_JSON + "\n```"
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.verdict == "REQUEST_CHANGES"
 
 
 def test_parse_response_issues_defaults_to_empty_list() -> None:
     raw = json.dumps({"summary": "Well covered.", "verdict": "APPROVE"})
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.issues == []
 
 
 def test_parse_response_suggestions_defaults_to_empty_list() -> None:
     raw = json.dumps({"summary": "Well covered.", "verdict": "APPROVE"})
-    result = _parse_response(raw)
+    result = _parse_response(raw, _DEFAULT_DIFF)
     assert result.suggestions == []
+
+
+def test_parse_response_drops_issue_with_fabricated_evidence() -> None:
+    """The acceptance criteria's required test: an issue whose evidence isn't a verbatim
+    substring of the diff must be filtered out, not shown.
+    """
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [
+                {
+                    "issue": "No test for the case where all retries are exhausted",
+                    "evidence": "def _retry(max_attempts=3):",
+                }
+            ],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_keeps_issue_with_verified_evidence() -> None:
+    result = _parse_response(_VALID_JSON, _DEFAULT_DIFF)
+    assert result.issues == ["No test for the case where all retries are exhausted"]
+
+
+def test_parse_response_drops_issue_missing_evidence_field() -> None:
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [{"issue": "No test for the case where all retries are exhausted"}],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_drops_issue_that_is_not_an_object() -> None:
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": ["No test for the case where all retries are exhausted"],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.issues == []
+
+
+def test_parse_response_drops_pr_36794_style_hallucination() -> None:
+    """Regression test for the actual PR #36794 hallucination: the agent claimed a
+    bridge?.shutdown() call was commented out, when the real diff shows it as live code with
+    an explanatory comment on the line above. The fabricated evidence (claiming a commented-out
+    form) doesn't appear verbatim in the real diff, so the mechanical check must drop it.
+    """
+    diff = (
+        "diff --git a/packages/react-devtools-extensions/src/main/index.js "
+        "b/packages/react-devtools-extensions/src/main/index.js\n"
+        "+  // Cleanly shut down the bridge so the panel can reconnect on reload.\n"
+        "+  bridge?.shutdown();\n"
+    )
+    raw = json.dumps(
+        {
+            "summary": "Found a dead code path.",
+            "verdict": "COMMENT",
+            "issues": [
+                {
+                    "issue": "index.js:460-475 — the else branch that calls bridge.shutdown() "
+                    "is commented out, so it has no test coverage",
+                    "evidence": "// bridge?.shutdown();",
+                }
+            ],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, diff)
+    assert result.issues == []
 
 
 # ── test_agent (node) ────────────────────────────────────────────────────────
@@ -350,3 +447,27 @@ def test_test_agent_sends_pr_diff_to_openai() -> None:
 
     prompt = mock_client.responses.create.call_args.kwargs["input"]
     assert "unique-test-diff-marker" in prompt
+
+
+def test_test_agent_drops_issues_with_evidence_not_in_diff() -> None:
+    """Confirms end-to-end that verification runs against state["pr"].diff specifically —
+    not the full prompt (which also contains commit messages, linked issues, historical
+    context) or some other text.
+    """
+    pr = _make_pr(diff="diff --git a/client.py b/client.py\n+def real_call():\n+    pass")
+    state = _make_state(pr, _make_context())
+    fabricated_json = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [{"issue": "No test for fake_call()", "evidence": "def fake_call():"}],
+            "suggestions": [],
+        }
+    )
+    mock_client = MagicMock()
+    mock_client.responses.create.return_value = MagicMock(output_text=fabricated_json)
+
+    with patch(_PATCH.format("OpenAI"), return_value=mock_client):
+        update = run_test_agent(state)
+
+    assert update["test_result"].issues == []

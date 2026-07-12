@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from llama_index.core.schema import NodeWithScore
 from openai import OpenAI
@@ -10,6 +11,8 @@ from config.settings import settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PRContext, ReviewRecord
+
+logger = logging.getLogger(__name__)
 
 _OPENAI_MODEL = "gpt-4.1-mini"
 
@@ -33,6 +36,11 @@ Before including any issue that makes a specific, checkable claim about a code c
 line(s) for that construct and confirm the claim is true. If you cannot point to the specific \
 line(s) that support the claim, drop it or soften it into a general observation instead.
 
+Every issue must include an "evidence" field: the exact diff line(s) it refers to, copied \
+verbatim from the diff above — not paraphrased, not summarized. Issues whose evidence can't be \
+found verbatim in the diff are automatically discarded before you ever see the result, so a \
+fabricated or paraphrased quote just wastes the finding — quote precisely or leave it out.
+
 Keep findings terse and bullet-style, never narrative paragraphs. Include a file and line \
 number in each issue when the diff makes one determinable (e.g. "gh/client.py:23 — ..."). \
 Return at most 3 suggestions — the most important ones only, omit minor nits.
@@ -42,7 +50,11 @@ Return ONLY a JSON object with this exact schema — no surrounding text or code
   "summary": "<one short sentence; if there are no issues, a single short line like \
 'No security concerns found.' — never a justification paragraph>",
   "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<file:line — short, specific security issue>", ...],
+  "issues": [
+    {"issue": "<file:line — short, specific security issue>", "evidence": "<the exact diff \
+line(s) this refers to, copied verbatim from the diff above>"},
+    ...
+  ],
   "suggestions": ["<short, specific security improvement suggestion>", ...]
 }"""
 
@@ -122,14 +134,47 @@ def _call_openai(prompt: str) -> str:
     return response.output_text
 
 
-def _parse_response(text: str) -> AgentResult:
-    """Parse OpenAI response text into an AgentResult, stripping code fences if present."""
+def _verify_issues(raw_issues: list, diff: str) -> list[str]:
+    """Keep only issues whose evidence is a verbatim substring of the diff.
+
+    Mechanical, non-LLM backstop to the prompt's own self-check clause — a plain string
+    containment check, not another model call. Each raw issue is expected to be
+    {"issue": ..., "evidence": ...}; anything that isn't a dict, or has no/empty evidence, or
+    whose evidence can't be found verbatim in the diff, is dropped and logged rather than
+    shown to the user (a real LLM won't always perfectly follow the schema, so this fails
+    closed instead of raising).
+    """
+    verified: list[str] = []
+    for raw_issue in raw_issues:
+        if not isinstance(raw_issue, dict):
+            logger.warning("Dropping malformed issue entry (not an object): %r", raw_issue)
+            continue
+        description = raw_issue.get("issue", "")
+        evidence = raw_issue.get("evidence", "")
+        if evidence and evidence.strip() in diff:
+            verified.append(description)
+        else:
+            logger.warning(
+                "Dropping unverifiable issue — evidence not found verbatim in diff: "
+                "issue=%r evidence=%r",
+                description,
+                evidence,
+            )
+    return verified
+
+
+def _parse_response(text: str, diff: str) -> AgentResult:
+    """Parse OpenAI response text into an AgentResult, stripping code fences if present.
+
+    Each issue's evidence is mechanically verified against diff before being kept — see
+    _verify_issues.
+    """
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data = json.loads(text)
     return AgentResult(
         summary=data["summary"],
         verdict=data["verdict"],
-        issues=data.get("issues", []),
+        issues=_verify_issues(data.get("issues", []), diff),
         suggestions=data.get("suggestions", []),
     )
 
@@ -144,4 +189,4 @@ def security_agent(state: ReviewState) -> dict[str, AgentResult]:
     """
     prompt = _build_input(state["pr"], state["context"])
     response_text = _call_openai(prompt)
-    return {"security_result": _parse_response(response_text)}
+    return {"security_result": _parse_response(response_text, state["pr"].diff)}
