@@ -355,6 +355,36 @@ def test_review_full_flag_passed_through(monkeypatch: pytest.MonkeyPatch) -> Non
     mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=True)
 
 
+def test_review_full_reinvoke_request_changes_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--full re-reviews must still fail a CI step on REQUEST_CHANGES.
+
+    Live PR verdicts aren't stable enough to assert against real GitHub data here (that
+    instability against an unchanged PR was the actual bug — see agent temperature pinning),
+    so this locks down the exit-code contract via a mocked review result instead.
+    """
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=36476,
+            summary="Needs work",
+            verdict="REQUEST_CHANGES",
+            issues=["bug A"],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "facebook/react", "36476", "--full"])
+
+    assert result.exit_code == 1
+    assert "REQUEST_CHANGES" in result.stdout
+    mock.assert_awaited_once_with("facebook", "react", 36476, full=True)
+
+
 def test_review_default_full_flag_is_false(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=ReviewResult(
