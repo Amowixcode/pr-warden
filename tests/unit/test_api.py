@@ -99,6 +99,31 @@ def test_reviews_endpoint_returns_empty_list() -> None:
     assert response.json() == []
 
 
+def test_reviews_endpoint_surfaces_supabase_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [
+        {
+            "id": 1,
+            "repo": "octocat/Hello-World",
+            "pr_number": 7,
+            "head_sha": "deadbeef",
+            "verdict": "APPROVE",
+            "summary": "Looks good",
+            "issues": [],
+            "suggestions": [],
+            "created_at": "2024-06-01T00:00:00Z",
+        }
+    ]
+    monkeypatch.setattr("api.routes.history.list_reviews", lambda: rows)
+
+    response = client.get("/reviews")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["repo"] == "octocat/Hello-World"
+    assert data[0]["pr_number"] == 7
+
+
 def test_health_endpoint_all_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=DoctorResult(

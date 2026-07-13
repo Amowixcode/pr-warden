@@ -23,6 +23,7 @@ dependencies = [
     "openai",
     "fastapi",
     "uvicorn[standard]",
+    "supabase",
 ]
 
 [project.scripts]

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from agents.graph import graph
 from agents.state import AgentResult, ReviewState
 from config.settings import settings
+from core import supabase_history
 from core.review_history import load_review_record, save_review_record
 from gh.client import GitHubClient
 from gh.pr_fetcher import fetch_diff_since, fetch_linked_issues, fetch_pull_request
@@ -122,22 +124,19 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
     quality_result = final_state["quality_result"]
     test_result = final_state["test_result"]
 
-    save_review_record(
-        owner,
-        repo,
-        pr_number,
-        ReviewRecord(
-            head_sha=pr.head_sha,
-            verdict=final.verdict,
-            summary=final.summary,
-            issues=final.issues,
-            suggestions=final.suggestions,
-            security_result=_to_persisted(security_result),
-            quality_result=_to_persisted(quality_result),
-            test_result=_to_persisted(test_result),
-            reviewed_at=datetime.now(UTC),
-        ),
+    record = ReviewRecord(
+        head_sha=pr.head_sha,
+        verdict=final.verdict,
+        summary=final.summary,
+        issues=final.issues,
+        suggestions=final.suggestions,
+        security_result=_to_persisted(security_result),
+        quality_result=_to_persisted(quality_result),
+        test_result=_to_persisted(test_result),
+        reviewed_at=datetime.now(UTC),
     )
+    save_review_record(owner, repo, pr_number, record)
+    await asyncio.to_thread(supabase_history.save_review, owner, repo, pr_number, record)
 
     return ReviewResult(
         pr_number=pr.number,

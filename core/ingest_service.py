@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from config.settings import settings
+from core import supabase_history
 from core.ingest_history import IngestRecord, load_ingest_record, save_ingest_record
 from gh.client import GitHubClient
 from gh.repo_fetcher import fetch_issues, fetch_merged_prs, fetch_recent_commits
@@ -72,10 +73,13 @@ async def ingest_repository(owner: str, repo: str, full: bool = False) -> Ingest
 
     save_ingest_record(owner, repo, IngestRecord(last_ingested_at=run_started_at))
 
-    return IngestResult(
+    result = IngestResult(
         issues_indexed=n_issues,
         prs_indexed=n_prs,
         commits_indexed=n_commits,
         total_newly_indexed=n_issues + n_prs + n_commits,
         incremental=prior_record is not None,
     )
+    await asyncio.to_thread(supabase_history.save_ingest, owner, repo, result, run_started_at)
+
+    return result

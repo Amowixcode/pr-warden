@@ -69,3 +69,15 @@ since that commit is sent to the agents — the prior verdict is passed along as
 agents can focus on what's new. If nothing has changed since the last review, no agents (and no
 OpenAI calls) run at all; the cached verdict is returned directly. Pass `--full` to always do a
 complete review, ignoring history.
+
+## Supabase setup (optional)
+
+Local JSON history (above) is all that's needed for the CLI's incremental caching. Supabase is
+an optional, additive store on top of that, used to serve `GET /reviews` from the API layer.
+
+1. Run [`supabase/schema.sql`](supabase/schema.sql) in your Supabase project's SQL editor —
+   it creates the `reviews` and `ingests` tables.
+2. Set `SUPABASE_URL` and `SUPABASE_KEY` in `.env`.
+
+Without these two variables set, review/ingest still work exactly as before — Supabase writes
+are skipped, and `GET /reviews` returns `[]`.
