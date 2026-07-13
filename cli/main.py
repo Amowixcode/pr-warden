@@ -20,9 +20,9 @@ app = typer.Typer(
     help="pr-warden — context-aware PR review CLI",
     no_args_is_help=True,
     epilog=(
-        "Quickstart: warden doctor -> warden ingest owner/repo -> "
-        "warden review owner/repo 123\n\n"
-        "Run 'warden <command> --help' for details on any command."
+        "Quickstart: uv run warden doctor -> uv run warden ingest owner/repo -> "
+        "uv run warden review owner/repo 123\n\n"
+        "Run 'uv run warden <command> --help' for details on any command."
     ),
 )
 console = Console()
