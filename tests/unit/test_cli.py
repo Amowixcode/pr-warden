@@ -30,6 +30,32 @@ def _agent_result(
     )
 
 
+def test_bare_invocation_shows_help_not_missing_command_error() -> None:
+    """Typer's no_args_is_help raises NoArgsIsHelpError (a click.UsageError subclass), so the
+    exit code stays 2 — same "usage issue" family as before — but the *content* changes from
+    a terse "Missing command" one-liner to the full help listing + epilog, which is the actual
+    behavior this task asks for.
+    """
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 2
+    assert "Missing command" not in result.output
+    assert "doctor" in result.output
+    assert "ingest" in result.output
+    assert "review" in result.output
+    assert "Quickstart" in result.output
+
+
+def test_help_epilog_shows_quickstart_flow() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "warden doctor" in result.output
+    assert "warden ingest" in result.output
+    assert "warden review" in result.output
+    assert "--help" in result.output
+
+
 def test_ingest_success(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=IngestResult(

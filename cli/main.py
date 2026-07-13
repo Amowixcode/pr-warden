@@ -16,7 +16,15 @@ from rich.table import Table
 
 from core.exceptions import VectorStoreError
 
-app = typer.Typer(help="pr-warden — context-aware PR review CLI")
+app = typer.Typer(
+    help="pr-warden — context-aware PR review CLI",
+    no_args_is_help=True,
+    epilog=(
+        "Quickstart: warden doctor -> warden ingest owner/repo -> "
+        "warden review owner/repo 123\n\n"
+        "Run 'warden <command> --help' for details on any command."
+    ),
+)
 console = Console()
 err_console = Console(stderr=True)
 
@@ -153,9 +161,13 @@ def _print_review_result_json(result: Any) -> None:
     console.print_json(data=dataclasses.asdict(result))
 
 
-@app.command()
+@app.command(short_help="Run setup/health checks (optional, run anytime).")
 def doctor() -> None:
-    """Run setup/health checks (Settings, GitHub, OpenAI, ChromaDB) and report pass/fail."""
+    """Run setup/health checks (Settings, GitHub, OpenAI, ChromaDB) and report pass/fail.
+
+    Optional — run this anytime, before or after ingest/review, to confirm your GitHub token,
+    OpenAI key, and ChromaDB are configured correctly.
+    """
     from core.doctor_service import run_doctor_checks  # lazy, same reasoning as ingest/review
 
     result = _run(run_doctor_checks())
@@ -164,7 +176,7 @@ def doctor() -> None:
         raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(short_help="Index a repo (run this first).")
 def ingest(
     repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
     full: Annotated[
@@ -174,7 +186,8 @@ def ingest(
         ),
     ] = False,
 ) -> None:
-    """Index a repository's issues, merged PRs, and commits into ChromaDB.
+    """Index a repository's issues, merged PRs, and commits into ChromaDB. Run this first,
+    before reviewing a PR.
 
     Incremental by default: if this repo was ingested before, only items created or updated
     since that ingest are fetched. Pass --full to always do a complete re-ingestion.
@@ -186,7 +199,7 @@ def ingest(
     _print_ingest_result(owner, name, result)
 
 
-@app.command()
+@app.command(short_help="Review a PR (run after ingest).")
 def review(
     repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
     pr_number: Annotated[int, typer.Argument(help="Pull request number to review", min=1)],
@@ -209,7 +222,8 @@ def review(
         ),
     ] = False,
 ) -> None:
-    """Review a pull request using historical repo context and OpenAI.
+    """Review a pull request using historical repo context and OpenAI. Run this after
+    ingesting the repo.
 
     Incremental by default: if this PR was reviewed before, only the diff since the last
     review is sent to the agents (or, if nothing changed, the cached result is returned with
