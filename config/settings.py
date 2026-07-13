@@ -25,5 +25,8 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = None
     langsmith_project: str = "pr-warden"
 
+    supabase_url: str | None = None
+    supabase_key: str | None = None
+
 
 settings: Settings = Settings()

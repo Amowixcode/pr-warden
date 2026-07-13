@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -61,3 +63,15 @@ class HealthResponse(BaseModel):
 
     checks: list[CheckResultModel]
     all_passed: bool
+
+
+class ReviewHistoryItem(BaseModel):
+    id: int
+    repo: str
+    pr_number: int
+    head_sha: str
+    verdict: str
+    summary: str
+    issues: list[str]
+    suggestions: list[str]
+    created_at: datetime
