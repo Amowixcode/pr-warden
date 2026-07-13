@@ -15,6 +15,7 @@ from retrieval.context_builder import PRContext, ReviewRecord
 logger = logging.getLogger(__name__)
 
 _OPENAI_MODEL = "gpt-4.1-mini"
+_TEMPERATURE = 0
 
 _SYSTEM_PROMPT = """\
 You are a code-quality-focused code reviewer. Review the pull request below for CODE QUALITY \
@@ -129,6 +130,7 @@ def _call_openai(prompt: str) -> str:
         model=_OPENAI_MODEL,
         instructions=_SYSTEM_PROMPT,
         input=prompt,
+        temperature=_TEMPERATURE,
         store=False,
     )
     return response.output_text
