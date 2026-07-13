@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock
 
+import click
 import pytest
 import typer
 from github import GithubException
@@ -16,7 +17,10 @@ from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
 
-runner = CliRunner()
+# A wide, fixed terminal size for every invoke() in this file — Rich's help/panel rendering
+# wraps based on the ambient terminal width, which CI and local dev can report differently (or
+# not report at all), splitting asserted substrings across a line break unpredictably otherwise.
+runner = CliRunner(env={"COLUMNS": "200", "LINES": "50"})
 
 
 def _agent_result(
@@ -28,6 +32,34 @@ def _agent_result(
     return AgentResult(
         summary=summary, verdict=verdict, issues=issues or [], suggestions=suggestions or []
     )
+
+
+def test_bare_invocation_shows_help_not_missing_command_error() -> None:
+    """Typer's no_args_is_help raises NoArgsIsHelpError (a click.UsageError subclass), so the
+    exit code stays 2 — same "usage issue" family as before — but the *content* changes from
+    a terse "Missing command" one-liner to the full help listing + epilog, which is the actual
+    behavior this task asks for.
+    """
+    result = runner.invoke(app, [])
+    output = click.unstyle(result.output)
+
+    assert result.exit_code == 2
+    assert "Missing command" not in output
+    assert "doctor" in output
+    assert "ingest" in output
+    assert "review" in output
+    assert "Quickstart" in output
+
+
+def test_help_epilog_shows_quickstart_flow() -> None:
+    result = runner.invoke(app, ["--help"])
+    output = click.unstyle(result.output)
+
+    assert result.exit_code == 0
+    assert "warden doctor" in output
+    assert "warden ingest" in output
+    assert "warden review" in output
+    assert "--help" in output
 
 
 def test_ingest_success(monkeypatch: pytest.MonkeyPatch) -> None:
