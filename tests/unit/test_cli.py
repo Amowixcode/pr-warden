@@ -56,9 +56,9 @@ def test_help_epilog_shows_quickstart_flow() -> None:
     output = click.unstyle(result.output)
 
     assert result.exit_code == 0
-    assert "warden doctor" in output
-    assert "warden ingest" in output
-    assert "warden review" in output
+    assert "uv run warden doctor" in output
+    assert "uv run warden ingest" in output
+    assert "uv run warden review" in output
     assert "--help" in output
 
 
