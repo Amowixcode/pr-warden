@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     supabase_key: str | None = None
 
     api_shared_key: str | None = None
+    allowed_origin: str | None = None
+    review_rate_limit_max_calls: int = 20
+    review_rate_limit_window_seconds: int = 3600
 
 
 settings: Settings = Settings()

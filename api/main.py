@@ -9,6 +9,8 @@ from github import GithubException
 from openai import OpenAIError
 from pydantic import ValidationError
 
+from api.cors import AllowedOriginMiddleware
+from api.rate_limiter import check_review_rate_limit
 from api.routes.health import router as health_router
 from api.routes.history import router as history_router
 from api.routes.ingest import router as ingest_router
@@ -18,6 +20,8 @@ from core.exceptions import VectorStoreError
 
 app = FastAPI(title="pr-warden", description="Context-aware PR review API")
 
+app.add_middleware(AllowedOriginMiddleware)
+
 
 async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
     """Enforce API_SHARED_KEY when configured; a no-op when it's unset (e.g. local dev/tests)."""
@@ -25,7 +29,10 @@ async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> 
         raise HTTPException(status_code=401, detail="invalid or missing API key")
 
 
-app.include_router(review_router, dependencies=[Depends(require_api_key)])
+app.include_router(
+    review_router,
+    dependencies=[Depends(require_api_key), Depends(check_review_rate_limit)],
+)
 app.include_router(ingest_router, dependencies=[Depends(require_api_key)])
 app.include_router(history_router, dependencies=[Depends(require_api_key)])
 app.include_router(health_router)
