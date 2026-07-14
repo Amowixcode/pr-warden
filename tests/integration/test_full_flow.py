@@ -181,6 +181,7 @@ def test_ingest_then_review_full_flow(
     isolated_chroma: None,
     isolated_ingest_history: None,
     isolated_review_history: None,
+    isolated_supabase: None,
 ) -> None:
     github_api.update(_github_fixtures())
 
