@@ -110,6 +110,17 @@ def _print_agent_section(title: str, result: Any) -> None:
         console.print(f"  • {suggestion}")
 
 
+def _print_open_prs(owner: str, repo: str, prs: list[Any]) -> None:
+    table = Table(title=f"Open PRs — {owner}/{repo}", header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Title")
+    table.add_column("Author")
+    table.add_column("Age", justify="right")
+    for pr in prs:
+        table.add_row(f"#{pr.number}", pr.title, pr.author, f"{pr.age_days}d")
+    console.print(table)
+
+
 def _print_doctor_result(result: Any) -> None:
     """Print a pass/fail table for each doctor check — never the check's raw secret value."""
     table = Table(title="pr-warden setup check", header_style="bold cyan")
@@ -197,6 +208,18 @@ def ingest(
 
     result = _run(ingest_repository(owner, name, full=full))
     _print_ingest_result(owner, name, result)
+
+
+@app.command("list", short_help="List open PRs for a repo.")
+def list_prs(
+    repo: Annotated[str, typer.Argument(help="GitHub repository as 'owner/repo'")],
+) -> None:
+    """List open pull requests for a repository — number, title, author, and age."""
+    owner, name = _parse_repo(repo)
+    from core.pr_service import list_open_prs  # lazy, same reasoning as ingest/review
+
+    prs = _run(list_open_prs(owner, name))
+    _print_open_prs(owner, name, prs)
 
 
 @app.command(short_help="Review a PR (run after ingest).")

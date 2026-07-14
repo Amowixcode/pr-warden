@@ -65,6 +65,15 @@ class HealthResponse(BaseModel):
     all_passed: bool
 
 
+class OpenPRResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    number: int
+    title: str
+    author: str
+    age_days: int
+
+
 class ReviewHistoryItem(BaseModel):
     id: int
     repo: str
