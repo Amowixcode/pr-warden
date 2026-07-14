@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from github import GithubException
 
 from agents.state import AgentResult
+from api import rate_limiter
 from api.main import app
 from config.settings import settings
 from core.doctor_service import CheckResult, DoctorResult
@@ -14,6 +15,21 @@ from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
 
 client = TestClient(app)
+
+
+def _review_result_mock() -> AsyncMock:
+    return AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Looks good",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+        )
+    )
 
 
 def _agent_result(
@@ -198,3 +214,99 @@ def test_health_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch)
     response = client.get("/health")
 
     assert response.status_code == 200
+
+
+def test_review_endpoint_returns_401_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+
+    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+
+    assert response.status_code == 401
+
+
+def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+
+    response = client.post(
+        "/review",
+        json={"repo": "octocat/Hello-World", "pr_number": 7},
+        headers={"X-API-Key": "wrong"},
+    )
+
+    assert response.status_code == 401
+
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+
+_ALLOWED_ORIGIN = "https://allowed.example.com"
+
+
+def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_cors_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+
+    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
+
+
+def test_cors_disallowed_origin_gets_no_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+
+    response = client.get("/health", headers={"Origin": "https://evil.example.com"})
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_no_allowed_origin_configured_blocks_everything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "allowed_origin", None)
+
+    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+
+
+def test_review_rate_limit_triggers_after_max_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
+    monkeypatch.setattr(settings, "review_rate_limit_max_calls", 2)
+    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+
+    body = {"repo": "octocat/Hello-World", "pr_number": 7}
+    assert client.post("/review", json=body).status_code == 200
+    assert client.post("/review", json=body).status_code == 200
+
+    response = client.post("/review", json=body)
+
+    assert response.status_code == 429
+
+
+def test_review_rate_limit_resets_outside_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
+    monkeypatch.setattr(settings, "review_rate_limit_max_calls", 1)
+    monkeypatch.setattr(settings, "review_rate_limit_window_seconds", 0)
+    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+
+    body = {"repo": "octocat/Hello-World", "pr_number": 7}
+    assert client.post("/review", json=body).status_code == 200
+    assert client.post("/review", json=body).status_code == 200

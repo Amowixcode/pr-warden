@@ -9,10 +9,13 @@
 | `SUPABASE_URL` | no | Supabase project URL — enables `GET /reviews` and history writes |
 | `SUPABASE_KEY` | no | Supabase service/anon key, paired with `SUPABASE_URL` |
 | `API_SHARED_KEY` | no | Shared secret required as the `X-API-Key` header on `/review`, `/ingest`, `/reviews`. `/health` is always unauthenticated. Unset = no auth (local dev default) |
+| `ALLOWED_ORIGIN` | no | The deployed frontend's origin (e.g. `https://your-app.vercel.app`) allowed to call the API cross-origin. Unset = no origin is allowed (fail-closed, not a wildcard) |
+| `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window before `429`. Default `20` |
+| `REVIEW_RATE_LIMIT_WINDOW_SECONDS` | no | Rate-limit window length in seconds. Default `3600` (1 hour) |
 
-`SUPABASE_URL`/`SUPABASE_KEY` and `API_SHARED_KEY` are optional — the API runs without them,
-just with reduced functionality (no review history persistence, no auth). Set all five in
-production.
+`SUPABASE_URL`/`SUPABASE_KEY`, `API_SHARED_KEY`, and `ALLOWED_ORIGIN` are optional — the API
+runs without them, just with reduced functionality (no review history persistence, no auth, no
+browser access from a frontend). Set all of them in production.
 
 ## Deploy via Blueprint (recommended)
 
