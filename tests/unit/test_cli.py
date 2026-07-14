@@ -15,6 +15,7 @@ from cli.main import _parse_repo, _print_agent_section, app
 from core.doctor_service import CheckResult, DoctorResult
 from core.exceptions import VectorStoreError
 from core.ingest_service import IngestResult
+from core.pr_service import OpenPR
 from core.review_service import ReviewResult
 
 # A wide, fixed terminal size for every invoke() in this file — Rich's help/panel rendering
@@ -119,6 +120,39 @@ def test_ingest_no_banner_for_ordinary_full_ingest(monkeypatch: pytest.MonkeyPat
     result = runner.invoke(app, ["ingest", "octocat/Hello-World"])
 
     assert "Incremental ingest" not in result.stdout
+
+
+def test_list_prs_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=[
+            OpenPR(number=12, title="Add dark mode", author="alice", age_days=3),
+            OpenPR(number=13, title="Fix typo", author="bob", age_days=1),
+        ]
+    )
+    monkeypatch.setattr("core.pr_service.list_open_prs", mock)
+
+    result = runner.invoke(app, ["list", "octocat/Hello-World"])
+
+    assert result.exit_code == 0
+    assert "Add dark mode" in result.stdout
+    assert "alice" in result.stdout
+    assert "#12" in result.stdout
+    mock.assert_awaited_once_with("octocat", "Hello-World")
+
+
+def test_list_prs_no_open_prs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("core.pr_service.list_open_prs", AsyncMock(return_value=[]))
+
+    result = runner.invoke(app, ["list", "octocat/Hello-World"])
+
+    assert result.exit_code == 0
+
+
+def test_list_prs_invalid_repo_format() -> None:
+    result = runner.invoke(app, ["list", "not-a-valid-repo"])
+
+    assert result.exit_code == 2
+    assert "owner/repo" in result.output
 
 
 def test_review_approve_verdict(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,6 +12,7 @@ from api.main import app
 from config.settings import settings
 from core.doctor_service import CheckResult, DoctorResult
 from core.ingest_service import IngestResult
+from core.pr_service import OpenPR
 from core.review_service import ReviewResult
 
 client = TestClient(app)
@@ -310,3 +311,53 @@ def test_review_rate_limit_resets_outside_window(monkeypatch: pytest.MonkeyPatch
     body = {"repo": "octocat/Hello-World", "pr_number": 7}
     assert client.post("/review", json=body).status_code == 200
     assert client.post("/review", json=body).status_code == 200
+
+
+# ── List open PRs ────────────────────────────────────────────────────────────
+
+
+def test_prs_endpoint_returns_open_prs(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(
+        return_value=[
+            OpenPR(number=12, title="Add dark mode", author="alice", age_days=3),
+            OpenPR(number=13, title="Fix typo", author="bob", age_days=1),
+        ]
+    )
+    monkeypatch.setattr("api.routes.prs.list_open_prs", mock)
+
+    response = client.get("/prs/octocat/Hello-World")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["number"] == 12
+    assert data[0]["title"] == "Add dark mode"
+    assert data[0]["author"] == "alice"
+    assert data[0]["age_days"] == 3
+    mock.assert_awaited_once_with("octocat", "Hello-World")
+
+
+def test_prs_endpoint_no_open_prs_returns_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.routes.prs.list_open_prs", AsyncMock(return_value=[]))
+
+    response = client.get("/prs/octocat/Hello-World")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_prs_endpoint_requires_api_key_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+
+    response = client.get("/prs/octocat/Hello-World")
+
+    assert response.status_code == 401
+
+
+def test_prs_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr("api.routes.prs.list_open_prs", AsyncMock(return_value=[]))
+
+    response = client.get("/prs/octocat/Hello-World", headers={"X-API-Key": "s3cr3t"})
+
+    assert response.status_code == 200

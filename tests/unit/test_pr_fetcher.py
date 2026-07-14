@@ -7,10 +7,12 @@ from github import GithubException
 
 from gh.client import GitHubClient
 from gh.pr_fetcher import (
+    OpenPRData,
     PRData,
     PRFile,
     fetch_diff_since,
     fetch_linked_issues,
+    fetch_open_prs,
     fetch_pull_request,
     parse_linked_issue_numbers,
 )
@@ -354,3 +356,58 @@ async def test_fetch_diff_since_empty_comparison_yields_empty_diff() -> None:
     result = await fetch_diff_since(client, "o", "r", "same-sha", "same-sha")
 
     assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# fetch_open_prs
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_open_pr(number: int, title: str, author: str, created_at: datetime) -> MagicMock:
+    pr = MagicMock()
+    pr.number = number
+    pr.title = title
+    pr.user.login = author
+    pr.created_at = created_at
+    return pr
+
+
+async def test_fetch_open_prs_maps_fields_correctly() -> None:
+    mock_repo = MagicMock()
+    mock_repo.get_pulls.return_value = [
+        _make_mock_open_pr(12, "Add dark mode", "alice", _CREATED),
+    ]
+    client = _make_mock_client_with_repo(mock_repo)
+
+    results = await fetch_open_prs(client, "o", "r")
+
+    assert len(results) == 1
+    assert isinstance(results[0], OpenPRData)
+    assert results[0].number == 12
+    assert results[0].title == "Add dark mode"
+    assert results[0].author == "alice"
+    assert results[0].created_at == _CREATED
+    client.get_repo.assert_called_once_with("o", "r")
+    mock_repo.get_pulls.assert_called_once_with(state="open", sort="created", direction="desc")
+
+
+async def test_fetch_open_prs_respects_limit() -> None:
+    mock_repo = MagicMock()
+    mock_repo.get_pulls.return_value = [
+        _make_mock_open_pr(n, f"PR {n}", "someone", _CREATED) for n in range(5)
+    ]
+    client = _make_mock_client_with_repo(mock_repo)
+
+    results = await fetch_open_prs(client, "o", "r", limit=2)
+
+    assert len(results) == 2
+
+
+async def test_fetch_open_prs_no_open_prs() -> None:
+    mock_repo = MagicMock()
+    mock_repo.get_pulls.return_value = []
+    client = _make_mock_client_with_repo(mock_repo)
+
+    results = await fetch_open_prs(client, "o", "r")
+
+    assert results == []

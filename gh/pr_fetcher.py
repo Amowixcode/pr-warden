@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import re
 from datetime import datetime
 
@@ -239,5 +240,48 @@ async def fetch_linked_issues(
                 )
             )
         return results
+
+    return await asyncio.to_thread(_fetch_sync)
+
+
+class OpenPRData(BaseModel):
+    """Lightweight snapshot of an open pull request, for the list-open-PRs feature."""
+
+    number: int
+    title: str
+    author: str
+    created_at: datetime
+
+
+async def fetch_open_prs(
+    client: GitHubClient,
+    owner: str,
+    name: str,
+    limit: int = 100,
+) -> list[OpenPRData]:
+    """Fetch open pull requests for a repository, newest-first.
+
+    Args:
+        client: An initialised GitHubClient.
+        owner: GitHub user or organisation owning the repository.
+        name: Repository name.
+        limit: Maximum number of open PRs to return.
+
+    Returns:
+        A list of OpenPRData objects, capped at ``limit``.
+    """
+
+    def _fetch_sync() -> list[OpenPRData]:
+        repo = client.get_repo(owner, name)
+        raw = repo.get_pulls(state="open", sort="created", direction="desc")
+        return [
+            OpenPRData(
+                number=pr.number,
+                title=pr.title,
+                author=pr.user.login,
+                created_at=pr.created_at,
+            )
+            for pr in itertools.islice(raw, limit)
+        ]
 
     return await asyncio.to_thread(_fetch_sync)
