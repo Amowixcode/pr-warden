@@ -9,7 +9,7 @@ packages = ["gh", "config", "core", "cli", "api", "ingestion", "retrieval", "age
 name = "pr-warden"
 version = "0.1.0"
 description = "AI-powered PR review assistant"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "langgraph",
     "llama-index-core",
