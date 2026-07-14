@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: pr-warden-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disk:
+      name: pr-warden-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: API_SHARED_KEY
+        sync: false

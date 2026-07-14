@@ -168,3 +168,14 @@ def isolated_review_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     from config.settings import settings
 
     monkeypatch.setattr(settings, "review_history_path", str(tmp_path / "review_history.json"))
+
+
+@pytest.fixture
+def isolated_supabase(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset Supabase config so core.supabase_history's writes no-op instead of hitting a real
+    Supabase project (get_supabase_client() returns None when unconfigured).
+    """
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "supabase_url", None)
+    monkeypatch.setattr(settings, "supabase_key", None)

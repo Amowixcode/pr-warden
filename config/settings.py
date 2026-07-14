@@ -28,5 +28,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_key: str | None = None
 
+    api_shared_key: str | None = None
+
 
 settings: Settings = Settings()

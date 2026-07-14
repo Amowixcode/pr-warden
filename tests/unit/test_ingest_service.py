@@ -26,6 +26,13 @@ _PATCH_TARGETS = {
     "GitHubClient": "GitHubClient",
 }
 
+# core.supabase_history.save_ingest lives outside core.ingest_service's own module, so it can't
+# use the _PATCH.format() shorthand above — mocked separately in _apply() below. Without this,
+# ingest_repository()'s real supabase_history.save_ingest call would fire against a real
+# Supabase project whenever SUPABASE_URL/SUPABASE_KEY happen to be set in the environment
+# running these "unit" tests.
+_SUPABASE_SAVE_INGEST_TARGET = "core.supabase_history.save_ingest"
+
 
 def _make_patches(
     *,
@@ -51,6 +58,7 @@ def _make_patches(
         "load_ingest_record": MagicMock(return_value=None),
         "save_ingest_record": MagicMock(),
         "GitHubClient": MagicMock(),
+        "save_ingest_to_supabase": MagicMock(),
     }
 
 
@@ -63,6 +71,7 @@ def _apply(mocks: dict) -> ExitStack:
     stack = ExitStack()
     for key, target in _PATCH_TARGETS.items():
         stack.enter_context(patch(_PATCH.format(target), mocks[key]))
+    stack.enter_context(patch(_SUPABASE_SAVE_INGEST_TARGET, mocks["save_ingest_to_supabase"]))
     return stack
 
 

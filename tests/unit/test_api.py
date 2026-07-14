@@ -8,6 +8,7 @@ from github import GithubException
 
 from agents.state import AgentResult
 from api.main import app
+from config.settings import settings
 from core.doctor_service import CheckResult, DoctorResult
 from core.ingest_service import IngestResult
 from core.review_service import ReviewResult
@@ -92,7 +93,9 @@ def test_ingest_endpoint_invalid_repo_format() -> None:
     assert "owner/repo" in response.json()["detail"]
 
 
-def test_reviews_endpoint_returns_empty_list() -> None:
+def test_reviews_endpoint_returns_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.routes.history.list_reviews", lambda: [])
+
     response = client.get("/reviews")
 
     assert response.status_code == 200
@@ -158,3 +161,40 @@ def test_health_endpoint_one_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["all_passed"] is False
+
+
+def test_reviews_endpoint_requires_api_key_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+
+    response = client.get("/reviews")
+
+    assert response.status_code == 401
+
+
+def test_reviews_endpoint_rejects_wrong_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+
+    response = client.get("/reviews", headers={"X-API-Key": "wrong"})
+
+    assert response.status_code == 401
+
+
+def test_reviews_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr("api.routes.history.list_reviews", lambda: [])
+
+    response = client.get("/reviews", headers={"X-API-Key": "s3cr3t"})
+
+    assert response.status_code == 200
+
+
+def test_health_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    mock = AsyncMock(return_value=DoctorResult(checks=[]))
+    monkeypatch.setattr("api.routes.health.run_doctor_checks", mock)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200

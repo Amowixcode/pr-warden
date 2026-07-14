@@ -107,6 +107,13 @@ _PATCH_TARGETS = {
     "GitHubClient": "GitHubClient",
 }
 
+# core.supabase_history.save_review lives outside core.review_service's own module, so it can't
+# use the _PATCH.format() shorthand above — mocked separately in _apply() below. Without this,
+# review_pr()'s real supabase_history.save_review call would fire against a real Supabase
+# project whenever SUPABASE_URL/SUPABASE_KEY happen to be set in the environment running these
+# "unit" tests.
+_SUPABASE_SAVE_REVIEW_TARGET = "core.supabase_history.save_review"
+
 
 def _make_patches(
     pr: PRData, context: PRContext, final_verdict: AgentResult = _VALID_FINAL_VERDICT
@@ -130,6 +137,7 @@ def _make_patches(
             }
         ),
         "GitHubClient": MagicMock(),
+        "save_review_to_supabase": MagicMock(),
     }
 
 
@@ -143,6 +151,7 @@ def _apply(mocks: dict) -> ExitStack:
     stack = ExitStack()
     for key, target in _PATCH_TARGETS.items():
         stack.enter_context(patch(_PATCH.format(target), mocks[key]))
+    stack.enter_context(patch(_SUPABASE_SAVE_REVIEW_TARGET, mocks["save_review_to_supabase"]))
     return stack
 
 
