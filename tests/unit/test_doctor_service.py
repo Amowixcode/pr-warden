@@ -13,6 +13,7 @@ from core.doctor_service import (
     _check_github,
     _check_openai,
     _check_settings,
+    _check_supabase,
     run_doctor_checks,
 )
 from core.exceptions import VectorStoreError
@@ -178,6 +179,44 @@ async def test_check_chroma_failure() -> None:
     assert "bad-dir" in result.detail
 
 
+# ── _check_supabase ───────────────────────────────────────────────────────────
+
+
+def _mock_supabase_client(execute_side_effect: Exception | None = None) -> MagicMock:
+    client = MagicMock()
+    execute = client.table.return_value.select.return_value.limit.return_value.execute
+    execute.side_effect = execute_side_effect
+    return client
+
+
+async def test_check_supabase_not_configured() -> None:
+    with patch("core.supabase_client.get_supabase_client", return_value=None):
+        result = await _check_supabase()
+
+    assert result.name == "Supabase"
+    assert result.passed is False
+    assert result.detail == "not configured"
+
+
+async def test_check_supabase_healthy() -> None:
+    with patch("core.supabase_client.get_supabase_client", return_value=_mock_supabase_client()):
+        result = await _check_supabase()
+
+    assert result.name == "Supabase"
+    assert result.passed is True
+    assert result.detail == "reachable"
+
+
+async def test_check_supabase_query_fails() -> None:
+    client = _mock_supabase_client(execute_side_effect=RuntimeError("connection refused"))
+    with patch("core.supabase_client.get_supabase_client", return_value=client):
+        result = await _check_supabase()
+
+    assert result.passed is False
+    assert "RuntimeError" in result.detail
+    assert "connection refused" not in result.detail
+
+
 # ── run_doctor_checks (end-to-end) ───────────────────────────────────────────
 
 
@@ -187,13 +226,14 @@ async def test_run_doctor_checks_all_pass() -> None:
         patch("core.doctor_service.GitHubClient") as mock_gh_cls,
         patch("core.doctor_service.OpenAI") as mock_oa_cls,
         patch("ingestion.vector_store.build_chroma_collection"),
+        patch("core.supabase_client.get_supabase_client", return_value=_mock_supabase_client()),
     ):
         mock_gh_cls.return_value.ping = MagicMock()
         mock_oa_cls.return_value.models.list = MagicMock()
         result = await run_doctor_checks()
 
     assert result.all_passed is True
-    assert len(result.checks) == 5
+    assert len(result.checks) == 6
 
 
 async def test_run_doctor_checks_settings_missing_skips_live_checks() -> None:
@@ -203,7 +243,7 @@ async def test_run_doctor_checks_settings_missing_skips_live_checks() -> None:
         result = await run_doctor_checks()
 
     assert result.all_passed is False
-    assert len(result.checks) == 5
+    assert len(result.checks) == 6
     assert all("skipped" in c.detail for c in result.checks[2:])
 
 
@@ -213,6 +253,7 @@ async def test_run_doctor_checks_one_live_check_failing_fails_overall() -> None:
         patch("core.doctor_service.GitHubClient") as mock_gh_cls,
         patch("core.doctor_service.OpenAI") as mock_oa_cls,
         patch("ingestion.vector_store.build_chroma_collection"),
+        patch("core.supabase_client.get_supabase_client", return_value=_mock_supabase_client()),
     ):
         mock_gh_cls.return_value.ping.side_effect = GithubException(401, {}, None)
         mock_oa_cls.return_value.models.list = MagicMock()
@@ -227,6 +268,10 @@ async def test_run_doctor_checks_never_leaks_secret_values() -> None:
     """
     github_marker = "GH-SECRET-MARKER-abc123"
     openai_marker = "OPENAI-SECRET-MARKER-xyz789"
+    supabase_marker = "SUPABASE-SECRET-MARKER-def456"
+
+    supabase_error = RuntimeError(f"connection to postgresql://...:{supabase_marker}@... failed")
+    supabase_client = _mock_supabase_client(execute_side_effect=supabase_error)
 
     with (
         patch(
@@ -236,6 +281,7 @@ async def test_run_doctor_checks_never_leaks_secret_values() -> None:
         patch("core.doctor_service.GitHubClient") as mock_gh_cls,
         patch("core.doctor_service.OpenAI") as mock_oa_cls,
         patch("ingestion.vector_store.build_chroma_collection"),
+        patch("core.supabase_client.get_supabase_client", return_value=supabase_client),
     ):
         mock_gh_cls.return_value.ping.side_effect = GithubException(
             401, {"message": f"Bad credentials: {github_marker}"}, None
@@ -248,4 +294,5 @@ async def test_run_doctor_checks_never_leaks_secret_values() -> None:
     all_detail_text = " ".join(c.detail for c in result.checks)
     assert github_marker not in all_detail_text
     assert openai_marker not in all_detail_text
+    assert supabase_marker not in all_detail_text
     assert result.all_passed is False

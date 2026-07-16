@@ -1,0 +1,19 @@
+name: Keep-alive ping
+
+# Pings GET /health every ~12 minutes. This single ping does double duty:
+#   - keeps Render's free-tier web service from sleeping (idles out after ~15 min)
+#   - exercises /health's real Supabase query, which is what actually resets Supabase's
+#     free-tier 7-day inactivity pause (a plain HTTP hit to the project URL does not)
+# Deliberately no second, Supabase-only ping job — see core/doctor_service.py::_check_supabase.
+
+on:
+  schedule:
+    - cron: "*/12 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: curl -fsS "${{ secrets.RENDER_HEALTH_URL }}/health"

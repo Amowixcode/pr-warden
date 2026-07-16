@@ -102,8 +102,28 @@ async def _check_chroma(settings: Settings) -> CheckResult:
     return CheckResult("ChromaDB", True, f"accessible at {settings.chroma_persist_dir!r}")
 
 
+async def _check_supabase() -> CheckResult:
+    """Run a real, lightweight Supabase query — not just a config check.
+
+    This is what actually resets Supabase's free-tier 7-day inactivity pause timer, since
+    the timer only responds to database activity, not to HTTP requests hitting /health.
+    """
+    from core.supabase_client import get_supabase_client  # lazy: see _check_settings
+
+    client = get_supabase_client()
+    if client is None:
+        return CheckResult("Supabase", False, "not configured")
+
+    try:
+        query = client.table("reviews").select("id").limit(1)
+        await asyncio.to_thread(query.execute)
+    except Exception as e:
+        return CheckResult("Supabase", False, f"unreachable ({type(e).__name__})")
+    return CheckResult("Supabase", True, "reachable")
+
+
 async def run_doctor_checks() -> DoctorResult:
-    """Run setup/health checks: Settings presence, GitHub, OpenAI, and ChromaDB connectivity.
+    """Run setup/health checks: Settings presence, GitHub, OpenAI, ChromaDB, and Supabase.
 
     Never lets a check's exception propagate — each check catches its own failures and
     contributes a pass/fail CheckResult, so one failing check doesn't prevent the rest from
@@ -116,9 +136,11 @@ async def run_doctor_checks() -> DoctorResult:
         checks.append(CheckResult("GitHub API", False, "skipped — required settings missing"))
         checks.append(CheckResult("OpenAI API", False, "skipped — required settings missing"))
         checks.append(CheckResult("ChromaDB", False, "skipped — required settings missing"))
+        checks.append(CheckResult("Supabase", False, "skipped — required settings missing"))
         return DoctorResult(checks=checks)
 
     checks.append(await _check_github(settings))
     checks.append(await _check_openai(settings))
     checks.append(await _check_chroma(settings))
+    checks.append(await _check_supabase())
     return DoctorResult(checks=checks)
