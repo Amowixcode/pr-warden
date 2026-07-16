@@ -40,3 +40,11 @@ export interface OpenPRResponse {
   author: string;
   age_days: number;
 }
+
+export interface IngestResponse {
+  issues_indexed: number;
+  prs_indexed: number;
+  commits_indexed: number;
+  total_newly_indexed: number;
+  incremental: boolean;
+}

@@ -56,6 +56,10 @@ export function OpenPrsList({ apiKey }: { apiKey: string }) {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {prs === null && !loading && !error && (
+        <p className="api-key-note">Enter a repo to see its open PRs.</p>
+      )}
+
       {prs && !loading && (
         <>
           {prs.length === 0 ? (

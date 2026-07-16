@@ -205,6 +205,15 @@ a {
   margin-bottom: 16px;
 }
 
+.success-banner {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: #10281a;
+  border: 1px solid var(--status-approve);
+  color: #a8f0c0;
+  margin-bottom: 16px;
+}
+
 .spinner {
   width: 14px;
   height: 14px;
