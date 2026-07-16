@@ -1,6 +1,7 @@
-export type Section = "review" | "history" | "prs";
+export type Section = "ingest" | "review" | "history" | "prs";
 
 const ITEMS: { id: Section; label: string }[] = [
+  { id: "ingest", label: "Ingest" },
   { id: "review", label: "Review" },
   { id: "history", label: "History" },
   { id: "prs", label: "Open PRs" },

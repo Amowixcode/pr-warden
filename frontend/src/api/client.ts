@@ -1,4 +1,4 @@
-import type { OpenPRResponse, ReviewHistoryItem, ReviewResponse } from "./types";
+import type { IngestResponse, OpenPRResponse, ReviewHistoryItem, ReviewResponse } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -66,4 +66,12 @@ export function listOpenPrs(
 
 export function getReviewHistory(apiKey: string): Promise<ReviewHistoryItem[]> {
   return request<ReviewHistoryItem[]>("/reviews", { method: "GET" }, apiKey);
+}
+
+export function ingestRepository(repo: string, apiKey: string): Promise<IngestResponse> {
+  return request<IngestResponse>(
+    "/ingest",
+    { method: "POST", body: JSON.stringify({ repo }) },
+    apiKey,
+  );
 }
