@@ -15,8 +15,23 @@ class Settings(BaseSettings):
     openai_api_key: str
     chroma_persist_dir: str = "./data/chroma"
     chroma_collection_name: str = "pr_warden"
+    ingest_history_path: str = "./data/ingest_history.json"
+    review_history_path: str = "./data/review_history.json"
     openai_max_retries: int = 3
     github_max_retries: int = 3
+
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "pr-warden"
+
+    supabase_url: str | None = None
+    supabase_key: str | None = None
+
+    api_shared_key: str | None = None
+    allowed_origin: str | None = None
+    review_rate_limit_max_calls: int = 20
+    review_rate_limit_window_seconds: int = 3600
 
 
 settings: Settings = Settings()

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
+import re
 from datetime import datetime
 
-from pydantic import BaseModel
+from github import GithubException
+from pydantic import BaseModel, Field
 
 from gh.client import GitHubClient
+from gh.repo_fetcher import CommitData, IssueData
+
+_LINKED_ISSUE_PATTERN = re.compile(r"\b(?:fixes|closes|resolves)\s+#(\d+)\b", re.IGNORECASE)
 
 
 class PRFile(BaseModel):
@@ -32,6 +38,8 @@ class PRData(BaseModel):
     updated_at: datetime
     changed_files: list[PRFile]
     diff: str
+    commits: list[CommitData] = Field(default_factory=list)
+    head_sha: str = ""
 
 
 def _build_diff(pr_files: list[PRFile]) -> str:
@@ -81,6 +89,7 @@ async def fetch_pull_request(
         repo = client.get_repo(owner, name)
         pr = repo.get_pull(pr_number)
         raw_files = list(pr.get_files())
+        raw_commits = list(pr.get_commits())
 
         changed_files = [
             PRFile(
@@ -91,6 +100,17 @@ async def fetch_pull_request(
                 patch=f.patch,
             )
             for f in raw_files
+        ]
+
+        commits = [
+            CommitData(
+                sha=c.sha,
+                message=c.commit.message or "",
+                author=c.commit.author.name or "",
+                committed_at=c.commit.author.date,
+                url=c.html_url,
+            )
+            for c in raw_commits
         ]
 
         return PRData(
@@ -105,6 +125,163 @@ async def fetch_pull_request(
             updated_at=pr.updated_at,
             changed_files=changed_files,
             diff=_build_diff(changed_files),
+            commits=commits,
+            head_sha=pr.head.sha,
         )
+
+    return await asyncio.to_thread(_fetch_sync)
+
+
+async def fetch_diff_since(
+    client: GitHubClient,
+    owner: str,
+    name: str,
+    base_sha: str,
+    head_sha: str,
+) -> str:
+    """Diff between an arbitrary base SHA and head SHA, for incremental re-review.
+
+    Unlike ``fetch_pull_request``'s diff (always base-branch-to-head), this pins to whatever
+    SHA was last reviewed — computed via GitHub's compare API, not the PR's own base branch.
+
+    Args:
+        client: An initialised GitHubClient.
+        owner: GitHub user or organisation owning the repository.
+        name: Repository name.
+        base_sha: The commit SHA last reviewed.
+        head_sha: The PR's current HEAD commit SHA.
+
+    Returns:
+        A diff string in the same format as ``PRData.diff``.
+    """
+
+    def _fetch_sync() -> str:
+        repo = client.get_repo(owner, name)
+        comparison = repo.compare(base_sha, head_sha)
+        files = [
+            PRFile(
+                filename=f.filename,
+                status=f.status,
+                additions=f.additions,
+                deletions=f.deletions,
+                patch=f.patch,
+            )
+            for f in comparison.files
+        ]
+        return _build_diff(files)
+
+    return await asyncio.to_thread(_fetch_sync)
+
+
+def parse_linked_issue_numbers(body: str) -> list[int]:
+    """Extract issue numbers referenced via GitHub's Fixes/Closes/Resolves #N linking syntax.
+
+    Case-insensitive, matching GitHub's own PR-closing keywords. Returns numbers in
+    first-appearance order, deduplicated.
+
+    Args:
+        body: The PR description text.
+
+    Returns:
+        Referenced issue numbers, in order of first appearance.
+    """
+    seen: dict[int, None] = {}
+    for match in _LINKED_ISSUE_PATTERN.finditer(body):
+        seen.setdefault(int(match.group(1)), None)
+    return list(seen)
+
+
+async def fetch_linked_issues(
+    client: GitHubClient,
+    owner: str,
+    name: str,
+    body: str,
+) -> list[IssueData]:
+    """Fetch the issues referenced by Fixes/Closes/Resolves #N in a PR description.
+
+    Best-effort: a referenced number that doesn't resolve to an accessible issue (deleted,
+    private, or actually a pull request number) is silently skipped rather than failing the
+    whole review — the PR's own diff and commits remain the primary review material regardless.
+
+    Args:
+        client: An initialised GitHubClient.
+        owner: GitHub user or organisation owning the repository.
+        name: Repository name.
+        body: The PR description text to parse for linked issue references.
+
+    Returns:
+        IssueData for each linked issue that was found and fetchable.
+    """
+    numbers = parse_linked_issue_numbers(body)
+    if not numbers:
+        return []
+
+    def _fetch_sync() -> list[IssueData]:
+        repo = client.get_repo(owner, name)
+        results: list[IssueData] = []
+        for number in numbers:
+            try:
+                issue = repo.get_issue(number)
+            except GithubException:
+                continue
+            if issue.pull_request is not None:
+                continue
+            results.append(
+                IssueData(
+                    number=issue.number,
+                    title=issue.title,
+                    body=issue.body or "",
+                    state=issue.state,
+                    labels=[label.name for label in issue.labels],
+                    author=issue.user.login,
+                    created_at=issue.created_at,
+                    updated_at=issue.updated_at,
+                    closed_at=issue.closed_at,
+                )
+            )
+        return results
+
+    return await asyncio.to_thread(_fetch_sync)
+
+
+class OpenPRData(BaseModel):
+    """Lightweight snapshot of an open pull request, for the list-open-PRs feature."""
+
+    number: int
+    title: str
+    author: str
+    created_at: datetime
+
+
+async def fetch_open_prs(
+    client: GitHubClient,
+    owner: str,
+    name: str,
+    limit: int = 100,
+) -> list[OpenPRData]:
+    """Fetch open pull requests for a repository, newest-first.
+
+    Args:
+        client: An initialised GitHubClient.
+        owner: GitHub user or organisation owning the repository.
+        name: Repository name.
+        limit: Maximum number of open PRs to return.
+
+    Returns:
+        A list of OpenPRData objects, capped at ``limit``.
+    """
+
+    def _fetch_sync() -> list[OpenPRData]:
+        repo = client.get_repo(owner, name)
+        raw = repo.get_pulls(state="open", sort="created", direction="desc")
+        return [
+            OpenPRData(
+                number=pr.number,
+                title=pr.title,
+                author=pr.user.login,
+                created_at=pr.created_at,
+            )
+            for pr in itertools.islice(raw, limit)
+        ]
 
     return await asyncio.to_thread(_fetch_sync)

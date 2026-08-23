@@ -33,3 +33,11 @@ class GitHubClient:
             The PyGitHub Repository object for ``{owner}/{name}``.
         """
         return self._github.get_repo(f"{owner}/{name}")
+
+    def ping(self) -> None:
+        """Verify the token is valid and the API is reachable.
+
+        Uses GET /rate_limit — a cheap metadata call with no repo access — raising
+        GithubException on auth/network failure, same as get_repo.
+        """
+        self._github.get_rate_limit()
