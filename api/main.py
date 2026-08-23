@@ -4,12 +4,12 @@ import json
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from github import GithubException
 from openai import OpenAIError
 from pydantic import ValidationError
 
-from api.cors import AllowedOriginMiddleware
 from api.rate_limiter import check_review_rate_limit
 from api.routes.health import router as health_router
 from api.routes.history import router as history_router
@@ -21,7 +21,14 @@ from core.exceptions import VectorStoreError
 
 app = FastAPI(title="pr-warden", description="Context-aware PR review API")
 
-app.add_middleware(AllowedOriginMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_origin_regex=settings.allowed_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
