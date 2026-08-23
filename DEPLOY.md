@@ -9,11 +9,12 @@
 | `SUPABASE_URL` | no | Supabase project URL — enables `GET /reviews` and history writes |
 | `SUPABASE_KEY` | no | Supabase service/anon key, paired with `SUPABASE_URL` |
 | `API_SHARED_KEY` | no | Shared secret required as the `X-API-Key` header on `/review`, `/ingest`, `/reviews`. `/health` is always unauthenticated. Unset = no auth (local dev default) |
-| `ALLOWED_ORIGIN` | no | The deployed frontend's origin (e.g. `https://your-app.vercel.app`) allowed to call the API cross-origin. Unset = no origin is allowed (fail-closed, not a wildcard) |
+| `ALLOWED_ORIGINS` | no | Comma-separated list of frontend origins allowed to call the API cross-origin (e.g. `https://your-app.vercel.app,http://localhost:5173`). Unset = no explicit origins allowed |
+| `ALLOWED_ORIGIN_REGEX` | no | Regex matched against the request origin, in addition to `ALLOWED_ORIGINS`. Defaults to `https://pr-warden.*\.vercel\.app`, which covers both a stable `pr-warden.vercel.app` production alias and hash-suffixed Vercel preview deployments |
 | `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window before `429`. Default `20` |
 | `REVIEW_RATE_LIMIT_WINDOW_SECONDS` | no | Rate-limit window length in seconds. Default `3600` (1 hour) |
 
-`SUPABASE_URL`/`SUPABASE_KEY`, `API_SHARED_KEY`, and `ALLOWED_ORIGIN` are optional — the API
+`SUPABASE_URL`/`SUPABASE_KEY`, `API_SHARED_KEY`, and `ALLOWED_ORIGINS`/`ALLOWED_ORIGIN_REGEX` are optional — the API
 runs without them, just with reduced functionality (no review history persistence, no auth, no
 browser access from a frontend). Set all of them in production.
 

@@ -19,5 +19,7 @@ services:
         sync: false
       - key: API_SHARED_KEY
         sync: false
-      - key: ALLOWED_ORIGIN
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOWED_ORIGIN_REGEX
         sync: false

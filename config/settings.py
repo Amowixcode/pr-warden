@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,9 +30,18 @@ class Settings(BaseSettings):
     supabase_key: str | None = None
 
     api_shared_key: str | None = None
-    allowed_origin: str | None = None
+    allowed_origins: list[str] = []
+    allowed_origin_regex: str | None = r"https://pr-warden.*\.vercel\.app"
     review_rate_limit_max_calls: int = 20
     review_rate_limit_window_seconds: int = 3600
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value: object) -> object:
+        """Allow ALLOWED_ORIGINS as a comma-separated string, e.g. "a.com,b.com"."""
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
 
 settings: Settings = Settings()

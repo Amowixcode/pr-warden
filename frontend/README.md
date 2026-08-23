@@ -12,7 +12,7 @@ npm run dev
 ```
 
 Requires the backend (`api/`) running and reachable at `VITE_API_BASE_URL`, with its
-`ALLOWED_ORIGIN` env var set to this dev server's origin (`http://localhost:5173` by default)
+`ALLOWED_ORIGINS` env var including this dev server's origin (`http://localhost:5173` by default)
 — otherwise the browser's CORS preflight will be rejected. See the root [`DEPLOY.md`](../DEPLOY.md).
 
 ## API key
@@ -38,9 +38,11 @@ npm run build   # type-checks then bundles to dist/
 3. Set the `VITE_API_BASE_URL` environment variable to your deployed Render API's URL
    (e.g. `https://pr-warden-api.onrender.com`).
 4. Deploy.
-5. Once you have the Vercel URL, set it as `ALLOWED_ORIGIN` on the Render backend (see the root
-   [`DEPLOY.md`](../DEPLOY.md)) and redeploy the backend — otherwise the browser will block
-   every request due to CORS.
+5. The Render backend's default `ALLOWED_ORIGIN_REGEX` already matches any `pr-warden*.vercel.app`
+   origin (production alias and preview deployments alike), so no config change is needed there.
+   If you deploy under a different Vercel project name or a custom domain, add it to
+   `ALLOWED_ORIGINS` on the Render backend (see the root [`DEPLOY.md`](../DEPLOY.md)) and redeploy
+   — otherwise the browser will block every request due to CORS.
 6. Verify: open the deployed Vercel URL, enter your `API_SHARED_KEY` (if the backend has one
    configured), and submit a review for a real PR — confirm the Final Verdict renders and the
    History/Open PRs tabs load real data.

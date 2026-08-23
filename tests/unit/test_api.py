@@ -3,6 +3,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from github import GithubException
 
@@ -240,12 +242,38 @@ def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.Monk
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
 _ALLOWED_ORIGIN = "https://allowed.example.com"
+_VERCEL_PREVIEW_ORIGIN = "https://pr-warden-abc123-amowixcode-projects.vercel.app"
+_VERCEL_REGEX = r"https://pr-warden.*\.vercel\.app"
 
 
-def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+def _cors_client(
+    allow_origins: list[str] | None = None, allow_origin_regex: str | None = None
+) -> TestClient:
+    """A standalone app with only CORSMiddleware, isolated from the module-level `app`/`client`.
 
-    response = client.options(
+    CORSMiddleware bakes its config in at add_middleware() time, so per-test behavior can't be
+    driven by monkeypatching the shared `app`'s already-registered middleware; each test builds
+    its own tiny app instead.
+    """
+    test_app = FastAPI()
+    test_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins or [],
+        allow_origin_regex=allow_origin_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @test_app.get("/health")
+    def _health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return TestClient(test_app)
+
+
+def test_cors_preflight_disallowed_origin_blocked() -> None:
+    response = _cors_client(allow_origins=[_ALLOWED_ORIGIN]).options(
         "/health",
         headers={
             "Origin": "https://evil.example.com",
@@ -256,33 +284,57 @@ def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatc
     assert response.status_code == 400
 
 
-def test_cors_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
-
-    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
+def test_cors_allowed_origin_gets_header() -> None:
+    response = _cors_client(allow_origins=[_ALLOWED_ORIGIN]).get(
+        "/health", headers={"Origin": _ALLOWED_ORIGIN}
+    )
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
 
 
-def test_cors_disallowed_origin_gets_no_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+def test_cors_disallowed_origin_gets_no_header() -> None:
+    response = _cors_client(allow_origins=[_ALLOWED_ORIGIN]).get(
+        "/health", headers={"Origin": "https://evil.example.com"}
+    )
 
-    response = client.get("/health", headers={"Origin": "https://evil.example.com"})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_no_origins_configured_blocks_everything() -> None:
+    response = _cors_client().get("/health", headers={"Origin": _ALLOWED_ORIGIN})
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_cors_no_allowed_origin_configured_blocks_everything(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", None)
+def test_cors_vercel_preview_origin_matches_regex() -> None:
+    response = _cors_client(allow_origin_regex=_VERCEL_REGEX).get(
+        "/health", headers={"Origin": _VERCEL_PREVIEW_ORIGIN}
+    )
 
-    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == _VERCEL_PREVIEW_ORIGIN
+
+
+def test_cors_non_matching_origin_rejected_by_regex() -> None:
+    response = _cors_client(allow_origin_regex=_VERCEL_REGEX).get(
+        "/health", headers={"Origin": "https://evil.example.com"}
+    )
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_app_wired_from_settings() -> None:
+    cors_entries = [m for m in app.user_middleware if m.cls is CORSMiddleware]
+
+    assert len(cors_entries) == 1
+    kwargs = cors_entries[0].kwargs
+    assert kwargs["allow_origins"] == settings.allowed_origins
+    assert kwargs["allow_origin_regex"] == settings.allowed_origin_regex
+    assert kwargs["allow_credentials"] is True
 
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
