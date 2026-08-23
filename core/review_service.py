@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from llama_index.core.schema import NodeWithScore
-from openai import OpenAI
-
+from agents.graph import graph
+from agents.state import AgentResult, ReviewState
 from config.settings import settings
+from core import supabase_history
+from core.review_history import load_review_record, save_review_record
 from gh.client import GitHubClient
-from gh.pr_fetcher import PRData, fetch_pull_request
+from gh.pr_fetcher import fetch_diff_since, fetch_linked_issues, fetch_pull_request
 from ingestion.embedder import get_embed_model
 from ingestion.vector_store import build_chroma_collection, build_vector_store_index
-from retrieval.context_builder import PRContext, build_pr_context
-
-_OPENAI_MODEL = "gpt-4.1-mini"
+from retrieval.context_builder import PersistedAgentResult, ReviewRecord, build_pr_context
 
 
 @dataclass
@@ -24,83 +23,50 @@ class ReviewResult:
     verdict: str  # "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
     issues: list[str]
     suggestions: list[str]
+    security_result: AgentResult
+    quality_result: AgentResult
+    test_result: AgentResult
+    incremental: bool = False
+    cached: bool = False
+    prior_verdict: str | None = None
+    prior_head_sha: str | None = None
 
 
-def _format_nodes(nodes: list[NodeWithScore]) -> str:
-    if not nodes:
-        return "(none)"
-    return "\n\n---\n\n".join(n.node.get_content() for n in nodes)
-
-
-def _build_prompt(pr: PRData, context: PRContext) -> str:
-    """Build the OpenAI review prompt from PR data and retrieval context."""
-    return f"""\
-You are an expert code reviewer. Review the pull request below and return a JSON object.
-
-## Pull Request
-Title: {pr.title}
-Author: {pr.author}
-Branch: {pr.head_branch} → {pr.base_branch}
-
-### Description
-{pr.body}
-
-### Diff
-{pr.diff}
-
-## Historical Context
-
-### Similar Issues
-{_format_nodes(context.similar_issues)}
-
-### Related Merged PRs
-{_format_nodes(context.similar_prs)}
-
-### Related Commits
-{_format_nodes(context.related_commits)}
-
-## Instructions
-Return ONLY a JSON object with this exact schema — no surrounding text or code fences:
-{{
-  "summary": "<2-3 sentence overview of the PR and its quality>",
-  "verdict": "<APPROVE | REQUEST_CHANGES | COMMENT>",
-  "issues": ["<specific problem found>", ...],
-  "suggestions": ["<improvement suggestion>", ...]
-}}
-"""
-
-
-def _call_openai(prompt: str) -> str:
-    """Synchronous OpenAI call; run via asyncio.to_thread to avoid blocking."""
-    client = OpenAI(api_key=settings.openai_api_key, max_retries=settings.openai_max_retries)
-    response = client.responses.create(
-        model=_OPENAI_MODEL,
-        input=prompt,
-        store=False,
-    )
-    return response.output_text
-
-
-def _parse_response(pr_number: int, text: str) -> ReviewResult:
-    """Parse OpenAI response text into a ReviewResult, stripping code fences if present."""
-    text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    data = json.loads(text)
-    return ReviewResult(
-        pr_number=pr_number,
-        summary=data["summary"],
-        verdict=data["verdict"],
-        issues=data.get("issues", []),
-        suggestions=data.get("suggestions", []),
+def _to_agent_result(persisted: PersistedAgentResult) -> AgentResult:
+    return AgentResult(
+        summary=persisted.summary,
+        verdict=persisted.verdict,
+        issues=persisted.issues,
+        suggestions=persisted.suggestions,
     )
 
 
-async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
+def _to_persisted(result: AgentResult) -> PersistedAgentResult:
+    return PersistedAgentResult(
+        summary=result.summary,
+        verdict=result.verdict,
+        issues=result.issues,
+        suggestions=result.suggestions,
+    )
+
+
+async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -> ReviewResult:
     """Fetch a PR, retrieve historical context, and produce a structured review.
+
+    Runs the security/quality/test -> summarizer multi-agent graph (agents/graph.py) rather
+    than a single flat prompt — see agents/README.md for the graph shape and merge policy.
+
+    Incremental by default: if this PR was reviewed before (a ReviewRecord exists), only the
+    diff since the last-reviewed commit is sent to the agents, and the prior verdict is passed
+    along as context. If nothing has changed since the last review, the agents aren't called
+    at all — the cached result is returned directly. Pass full=True to ignore history and
+    always do a complete review.
 
     Args:
         owner: GitHub repository owner.
         repo: Repository name.
         pr_number: Pull request number to review.
+        full: Force a complete review, ignoring any prior review history.
 
     Returns:
         A ReviewResult with summary, verdict, issues, and suggestions.
@@ -108,12 +74,81 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
     client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
 
+    prior_record = None if full else load_review_record(owner, repo, pr_number)
+
+    if prior_record is not None and prior_record.head_sha == pr.head_sha:
+        # Nothing new since the last review — skip Chroma/RAG setup and the agent graph
+        # entirely and return the cached result.
+        return ReviewResult(
+            pr_number=pr.number,
+            summary=prior_record.summary,
+            verdict=prior_record.verdict,
+            issues=prior_record.issues,
+            suggestions=prior_record.suggestions,
+            security_result=_to_agent_result(prior_record.security_result),
+            quality_result=_to_agent_result(prior_record.quality_result),
+            test_result=_to_agent_result(prior_record.test_result),
+            incremental=True,
+            cached=True,
+            prior_verdict=prior_record.verdict,
+            prior_head_sha=prior_record.head_sha,
+        )
+
+    linked_issues = await fetch_linked_issues(client, owner, repo, pr.body)
+
+    if prior_record is not None:
+        incremental_diff = await fetch_diff_since(
+            client, owner, repo, prior_record.head_sha, pr.head_sha
+        )
+        pr = pr.model_copy(update={"diff": incremental_diff})
+
     collection = build_chroma_collection()
     embed_model = get_embed_model()
     index = build_vector_store_index(collection, embed_model)
 
-    context = await build_pr_context(pr, index, owner, repo)
-    prompt = _build_prompt(pr, context)
-    response_text = await asyncio.to_thread(_call_openai, prompt)
+    context = await build_pr_context(
+        pr, index, owner, repo, linked_issues=linked_issues, prior_review=prior_record
+    )
 
-    return _parse_response(pr.number, response_text)
+    initial_state: ReviewState = {
+        "pr": pr,
+        "context": context,
+        "security_result": None,
+        "quality_result": None,
+        "test_result": None,
+        "final_verdict": None,
+    }
+    final_state = await graph.ainvoke(initial_state)
+    final = final_state["final_verdict"]
+    security_result = final_state["security_result"]
+    quality_result = final_state["quality_result"]
+    test_result = final_state["test_result"]
+
+    record = ReviewRecord(
+        head_sha=pr.head_sha,
+        verdict=final.verdict,
+        summary=final.summary,
+        issues=final.issues,
+        suggestions=final.suggestions,
+        security_result=_to_persisted(security_result),
+        quality_result=_to_persisted(quality_result),
+        test_result=_to_persisted(test_result),
+        reviewed_at=datetime.now(UTC),
+    )
+    save_review_record(owner, repo, pr_number, record)
+    await asyncio.to_thread(supabase_history.save_review, owner, repo, pr_number, record)
+
+    return ReviewResult(
+        pr_number=pr.number,
+        summary=final.summary,
+        verdict=final.verdict,
+        issues=final.issues,
+        suggestions=final.suggestions,
+        security_result=security_result,
+        quality_result=quality_result,
+        test_result=test_result,
+        incremental=prior_record is not None,
+        cached=False,
+        prior_verdict=prior_record.verdict if prior_record else None,
+        prior_head_sha=prior_record.head_sha if prior_record else None,
+    )

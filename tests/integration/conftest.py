@@ -43,14 +43,20 @@ def github_api(monkeypatch: pytest.MonkeyPatch) -> dict[tuple[str, str], tuple[d
 
 @dataclass
 class OpenAIMock:
-    """Handle for the local OpenAI mock server — set canned responses, inspect real requests."""
+    """Handle for the local OpenAI mock server — set canned responses, inspect real requests.
+
+    responses_bodies routes by a substring of the incoming request's `instructions` field
+    (each agent's system prompt has a unique scope marker, e.g. "SECURITY concerns") rather
+    than by call order, since the security/quality/test agents run concurrently and which one
+    reaches the mock server first isn't deterministic.
+    """
 
     embedding: list[float] = field(default_factory=lambda: [0.1] * 8)
-    responses_body: dict | None = None
+    responses_bodies: dict[str, dict] = field(default_factory=dict)
     responses_requests: list[dict] = field(default_factory=list)
 
-    def set_responses_body(self, body: dict) -> None:
-        self.responses_body = body
+    def set_responses_body_for(self, instructions_marker: str, body: dict) -> None:
+        self.responses_bodies[instructions_marker] = body
 
 
 class _OpenAIMockHandler(http.server.BaseHTTPRequestHandler):
@@ -64,7 +70,7 @@ class _OpenAIMockHandler(http.server.BaseHTTPRequestHandler):
             response = _embeddings_response(body, state.embedding)
         elif self.path.endswith("/responses"):
             state.responses_requests.append(body)
-            response = state.responses_body
+            response = _route_responses_body(body, state.responses_bodies)
         else:
             self.send_response(404)
             self.end_headers()
@@ -79,6 +85,17 @@ class _OpenAIMockHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         pass
+
+
+def _route_responses_body(request_body: dict, responses_bodies: dict[str, dict]) -> dict:
+    instructions = request_body.get("instructions", "")
+    for marker, body in responses_bodies.items():
+        if marker in instructions:
+            return body
+    raise AssertionError(
+        f"no canned /responses body registered for instructions: {instructions!r} "
+        f"(registered markers: {list(responses_bodies)})"
+    )
 
 
 def _embeddings_response(request_body: dict, embedding: list[float]) -> dict:
@@ -133,3 +150,32 @@ def isolated_chroma(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     monkeypatch.setattr(settings, "chroma_persist_dir", str(tmp_path / "chroma"))
     monkeypatch.setattr(settings, "chroma_collection_name", "integration_test")
+
+
+@pytest.fixture
+def isolated_ingest_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the ingest-history store at a tmp_path so the test never touches the real file
+    (and never picks up a leftover record from a previous local test/dev run).
+    """
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "ingest_history_path", str(tmp_path / "ingest_history.json"))
+
+
+@pytest.fixture
+def isolated_review_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the review-history store at a tmp_path so the test never touches the real file."""
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "review_history_path", str(tmp_path / "review_history.json"))
+
+
+@pytest.fixture
+def isolated_supabase(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset Supabase config so core.supabase_history's writes no-op instead of hitting a real
+    Supabase project (get_supabase_client() returns None when unconfigured).
+    """
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "supabase_url", None)
+    monkeypatch.setattr(settings, "supabase_key", None)

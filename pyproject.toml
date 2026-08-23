@@ -9,7 +9,7 @@ packages = ["gh", "config", "core", "cli", "api", "ingestion", "retrieval", "age
 name = "pr-warden"
 version = "0.1.0"
 description = "AI-powered PR review assistant"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "langgraph",
     "llama-index-core",
@@ -21,6 +21,9 @@ dependencies = [
     "rich",
     "pydantic-settings",
     "openai",
+    "fastapi",
+    "uvicorn[standard]",
+    "supabase",
 ]
 
 [project.scripts]
@@ -36,6 +39,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py311"
