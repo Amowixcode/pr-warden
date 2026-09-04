@@ -79,6 +79,19 @@ def test_settings_missing_required_fields_raises(monkeypatch: pytest.MonkeyPatch
         Settings(_env_file=None)
 
 
+def test_settings_blank_rate_limit_env_vars_use_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_settings_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("REVIEW_RATE_LIMIT_MAX_CALLS", "")
+    monkeypatch.setenv("REVIEW_RATE_LIMIT_WINDOW_SECONDS", "")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.review_rate_limit_max_calls == 20
+    assert settings.review_rate_limit_window_seconds == 3600
+
+
 def test_settings_loads_from_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _clear_settings_env(monkeypatch)
     env_file = tmp_path / ".env"

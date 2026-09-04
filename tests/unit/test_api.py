@@ -5,11 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 from github import GithubException
+from openai import OpenAIError
 
 from agents.state import AgentResult
 from api import rate_limiter
 from api.main import app
-from config.settings import settings
+from config.settings import get_settings
 from core.doctor_service import CheckResult, DoctorResult
 from core.ingest_service import IngestResult
 from core.pr_service import OpenPR
@@ -87,6 +88,16 @@ def test_review_endpoint_github_exception_maps_to_status(monkeypatch: pytest.Mon
     assert "Not Found" in response.json()["detail"]
 
 
+def test_review_endpoint_openai_exception_maps_to_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock = AsyncMock(side_effect=OpenAIError("rate limited"))
+    monkeypatch.setattr("api.routes.review.review_pr", mock)
+
+    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+
+    assert response.status_code == 502
+    assert "OpenAI API error" in response.json()["detail"]
+
+
 def test_ingest_endpoint_returns_ingest_result(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=IngestResult(
@@ -144,7 +155,7 @@ def test_reviews_endpoint_surfaces_supabase_rows(monkeypatch: pytest.MonkeyPatch
     assert data[0]["pr_number"] == 7
 
 
-def test_health_endpoint_all_passed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_deep_endpoint_all_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=DoctorResult(
             checks=[
@@ -155,7 +166,7 @@ def test_health_endpoint_all_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("api.routes.health.run_doctor_checks", mock)
 
-    response = client.get("/health")
+    response = client.get("/health/deep")
 
     assert response.status_code == 200
     data = response.json()
@@ -163,7 +174,7 @@ def test_health_endpoint_all_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(data["checks"]) == 2
 
 
-def test_health_endpoint_one_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_deep_endpoint_one_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = AsyncMock(
         return_value=DoctorResult(
             checks=[
@@ -174,16 +185,84 @@ def test_health_endpoint_one_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("api.routes.health.run_doctor_checks", mock)
 
-    response = client.get("/health")
+    response = client.get("/health/deep")
 
     assert response.status_code == 200
     assert response.json()["all_passed"] is False
 
 
+def test_health_endpoint_returns_ok_without_external_io(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise AssertionError("liveness must not construct a GitHub or OpenAI client")
+
+    monkeypatch.setattr("gh.client.GitHubClient", _boom)
+    monkeypatch.setattr("openai.OpenAI", _boom)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_health_deep_endpoint_requires_api_key_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(
+        "api.routes.health.run_doctor_checks", AsyncMock(return_value=DoctorResult(checks=[]))
+    )
+
+    response = client.get("/health/deep")
+
+    assert response.status_code == 401
+
+
+def test_health_deep_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(
+        "api.routes.health.run_doctor_checks", AsyncMock(return_value=DoctorResult(checks=[]))
+    )
+
+    response = client.get("/health/deep", headers={"X-API-Key": "s3cr3t"})
+
+    assert response.status_code == 200
+
+
+def test_invalid_settings_returns_handled_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A genuinely broken Settings() must surface as a handled 500 via the registered
+    ValidationError handler, not an import-time crash. require_api_key calls get_settings()
+    before the route body runs, so any authenticated route exercises this path.
+    """
+    import os
+
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+
+    import config.settings as settings_module
+
+    class _BrokenSettings(BaseSettings):
+        model_config = SettingsConfigDict(env_file=None)
+
+        required_with_no_source: str
+
+    monkeypatch.setattr(settings_module, "Settings", _BrokenSettings)
+    settings_module.get_settings.cache_clear()
+    try:
+        response = client.get("/reviews")
+
+        assert response.status_code == 500
+        assert "invalid configuration" in response.json()["detail"]
+        for secret_env_var in ("GITHUB_TOKEN", "OPENAI_API_KEY"):
+            value = os.environ.get(secret_env_var)
+            if value:
+                assert value not in response.text
+    finally:
+        settings_module.get_settings.cache_clear()
+
+
 def test_reviews_endpoint_requires_api_key_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.get("/reviews")
 
@@ -191,7 +270,7 @@ def test_reviews_endpoint_requires_api_key_when_configured(
 
 
 def test_reviews_endpoint_rejects_wrong_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.get("/reviews", headers={"X-API-Key": "wrong"})
 
@@ -199,7 +278,7 @@ def test_reviews_endpoint_rejects_wrong_api_key(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_reviews_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
     monkeypatch.setattr("api.routes.history.list_reviews", lambda: [])
 
     response = client.get("/reviews", headers={"X-API-Key": "s3cr3t"})
@@ -208,9 +287,7 @@ def test_reviews_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatc
 
 
 def test_health_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
-    mock = AsyncMock(return_value=DoctorResult(checks=[]))
-    monkeypatch.setattr("api.routes.health.run_doctor_checks", mock)
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.get("/health")
 
@@ -218,7 +295,7 @@ def test_health_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_review_endpoint_returns_401_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
 
@@ -226,7 +303,7 @@ def test_review_endpoint_returns_401_without_api_key(monkeypatch: pytest.MonkeyP
 
 
 def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.post(
         "/review",
@@ -243,7 +320,7 @@ _ALLOWED_ORIGIN = "https://allowed.example.com"
 
 
 def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
 
     response = client.options(
         "/health",
@@ -257,7 +334,7 @@ def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatc
 
 
 def test_cors_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
 
     response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
 
@@ -266,7 +343,7 @@ def test_cors_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_cors_disallowed_origin_gets_no_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
 
     response = client.get("/health", headers={"Origin": "https://evil.example.com"})
 
@@ -277,7 +354,7 @@ def test_cors_disallowed_origin_gets_no_header(monkeypatch: pytest.MonkeyPatch) 
 def test_cors_no_allowed_origin_configured_blocks_everything(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "allowed_origin", None)
+    monkeypatch.setattr(get_settings(), "allowed_origin", None)
 
     response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
 
@@ -290,7 +367,7 @@ def test_cors_no_allowed_origin_configured_blocks_everything(
 
 def test_review_rate_limit_triggers_after_max_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
-    monkeypatch.setattr(settings, "review_rate_limit_max_calls", 2)
+    monkeypatch.setattr(get_settings(), "review_rate_limit_max_calls", 2)
     monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
 
     body = {"repo": "octocat/Hello-World", "pr_number": 7}
@@ -304,8 +381,8 @@ def test_review_rate_limit_triggers_after_max_calls(monkeypatch: pytest.MonkeyPa
 
 def test_review_rate_limit_resets_outside_window(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
-    monkeypatch.setattr(settings, "review_rate_limit_max_calls", 1)
-    monkeypatch.setattr(settings, "review_rate_limit_window_seconds", 0)
+    monkeypatch.setattr(get_settings(), "review_rate_limit_max_calls", 1)
+    monkeypatch.setattr(get_settings(), "review_rate_limit_window_seconds", 0)
     monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
 
     body = {"repo": "octocat/Hello-World", "pr_number": 7}
@@ -347,7 +424,7 @@ def test_prs_endpoint_no_open_prs_returns_empty_list(monkeypatch: pytest.MonkeyP
 
 
 def test_prs_endpoint_requires_api_key_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
     response = client.get("/prs/octocat/Hello-World")
 
@@ -355,7 +432,7 @@ def test_prs_endpoint_requires_api_key_when_configured(monkeypatch: pytest.Monke
 
 
 def test_prs_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
     monkeypatch.setattr("api.routes.prs.list_open_prs", AsyncMock(return_value=[]))
 
     response = client.get("/prs/octocat/Hello-World", headers={"X-API-Key": "s3cr3t"})

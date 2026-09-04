@@ -10,7 +10,7 @@ from llama_index.core.schema import Document
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from openai import OpenAIError
 
-from config.settings import settings
+from config.settings import get_settings
 from core.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ def build_chroma_collection(
     Returns:
         A ChromaDB Collection ready for reads and writes.
     """
+    settings = get_settings()
     resolved_dir = persist_dir or settings.chroma_persist_dir
     resolved_name = collection_name or settings.chroma_collection_name
     try:

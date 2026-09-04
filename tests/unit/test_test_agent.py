@@ -16,7 +16,7 @@ from agents.test_agent import (
 from agents.test_agent import (
     test_agent as run_test_agent,
 )
-from config.settings import settings
+from config.settings import get_settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PersistedAgentResult, PRContext, ReviewRecord
@@ -241,6 +241,7 @@ def test_call_openai_uses_configured_max_retries() -> None:
     with patch(_PATCH.format("OpenAI"), return_value=mock_client) as mock_openai_cls:
         _call_openai("some prompt")
 
+    settings = get_settings()
     mock_openai_cls.assert_called_once_with(
         api_key=settings.openai_api_key, max_retries=settings.openai_max_retries
     )

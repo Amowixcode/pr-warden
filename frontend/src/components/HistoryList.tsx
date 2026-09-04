@@ -43,7 +43,11 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
   }
 
   if (!items || items.length === 0) {
-    return <p className="api-key-note">No reviews yet.</p>;
+    return (
+      <p className="api-key-note">
+        No reviews yet. Ingest a repo and review a PR to get started.
+      </p>
+    );
   }
 
   return (

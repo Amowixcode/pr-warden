@@ -3,7 +3,7 @@ from __future__ import annotations
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-from config.settings import settings
+from config.settings import get_settings
 
 _DEFAULT_MODEL = "text-embedding-3-small"
 
@@ -22,6 +22,7 @@ def get_embed_model(model_name: str = _DEFAULT_MODEL) -> BaseEmbedding:
     Returns:
         A configured embedding model ready for use with VectorStoreIndex.
     """
+    settings = get_settings()
     return OpenAIEmbedding(
         model=model_name,
         api_key=settings.openai_api_key,

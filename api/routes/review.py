@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException
 
 from api.models import ReviewRequest, ReviewResponse
-from core.review_service import review_pr
+
+if TYPE_CHECKING:
+    from core.review_service import ReviewResult
 
 router = APIRouter()
 
@@ -14,6 +18,13 @@ def _parse_repo(repo: str) -> tuple[str, str]:
     if len(parts) != 2 or not parts[0] or not parts[1]:
         raise HTTPException(status_code=400, detail=f"expected 'owner/repo', got {repo!r}")
     return parts[0], parts[1]
+
+
+async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
+    """Lazily import core.review_service so it never joins api.main's module-scope imports."""
+    from core.review_service import review_pr as _review_pr
+
+    return await _review_pr(owner, repo, pr_number)
 
 
 @router.post("/review", response_model=ReviewResponse)
