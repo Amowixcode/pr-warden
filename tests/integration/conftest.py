@@ -146,10 +146,10 @@ def openai_api(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def isolated_chroma(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Point Chroma at a tmp_path so the test never touches the real ./data/chroma."""
-    from config.settings import settings
+    from config.settings import get_settings
 
-    monkeypatch.setattr(settings, "chroma_persist_dir", str(tmp_path / "chroma"))
-    monkeypatch.setattr(settings, "chroma_collection_name", "integration_test")
+    monkeypatch.setattr(get_settings(), "chroma_persist_dir", str(tmp_path / "chroma"))
+    monkeypatch.setattr(get_settings(), "chroma_collection_name", "integration_test")
 
 
 @pytest.fixture
@@ -157,17 +157,21 @@ def isolated_ingest_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Point the ingest-history store at a tmp_path so the test never touches the real file
     (and never picks up a leftover record from a previous local test/dev run).
     """
-    from config.settings import settings
+    from config.settings import get_settings
 
-    monkeypatch.setattr(settings, "ingest_history_path", str(tmp_path / "ingest_history.json"))
+    monkeypatch.setattr(
+        get_settings(), "ingest_history_path", str(tmp_path / "ingest_history.json")
+    )
 
 
 @pytest.fixture
 def isolated_review_history(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Point the review-history store at a tmp_path so the test never touches the real file."""
-    from config.settings import settings
+    from config.settings import get_settings
 
-    monkeypatch.setattr(settings, "review_history_path", str(tmp_path / "review_history.json"))
+    monkeypatch.setattr(
+        get_settings(), "review_history_path", str(tmp_path / "review_history.json")
+    )
 
 
 @pytest.fixture
@@ -175,7 +179,7 @@ def isolated_supabase(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unset Supabase config so core.supabase_history's writes no-op instead of hitting a real
     Supabase project (get_supabase_client() returns None when unconfigured).
     """
-    from config.settings import settings
+    from config.settings import get_settings
 
-    monkeypatch.setattr(settings, "supabase_url", None)
-    monkeypatch.setattr(settings, "supabase_key", None)
+    monkeypatch.setattr(get_settings(), "supabase_url", None)
+    monkeypatch.setattr(get_settings(), "supabase_key", None)

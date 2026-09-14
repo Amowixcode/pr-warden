@@ -65,6 +65,10 @@ class HealthResponse(BaseModel):
     all_passed: bool
 
 
+class LivenessResponse(BaseModel):
+    status: str = "ok"
+
+
 class OpenPRResponse(BaseModel):
     model_config = {"from_attributes": True}
 

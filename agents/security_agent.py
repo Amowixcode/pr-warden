@@ -7,7 +7,7 @@ from llama_index.core.schema import NodeWithScore
 from openai import OpenAI
 
 from agents.state import AgentResult, ReviewState
-from config.settings import settings
+from config.settings import get_settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PRContext, ReviewRecord
@@ -125,6 +125,7 @@ Branch: {pr.head_branch} → {pr.base_branch}
 
 def _call_openai(prompt: str) -> str:
     """Synchronous OpenAI call; LangGraph runs sync nodes in a thread executor automatically."""
+    settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key, max_retries=settings.openai_max_retries)
     response = client.responses.create(
         model=_OPENAI_MODEL,

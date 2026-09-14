@@ -1,3 +1,6 @@
+from functools import lru_cache
+
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,5 +36,20 @@ class Settings(BaseSettings):
     review_rate_limit_max_calls: int = 20
     review_rate_limit_window_seconds: int = 3600
 
+    @field_validator(
+        "review_rate_limit_max_calls", "review_rate_limit_window_seconds", mode="before"
+    )
+    @classmethod
+    def _blank_uses_default(cls, v: object, info: ValidationInfo) -> object:
+        """An unset env var falls back to the default already; an empty string doesn't — a
+        blank REVIEW_RATE_LIMIT_MAX_CALLS in .env otherwise fails int parsing and crashes the
+        process. Treat blank the same as unset.
+        """
+        if isinstance(v, str) and not v.strip():
+            return cls.model_fields[info.field_name].default
+        return v
 
-settings: Settings = Settings()
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()

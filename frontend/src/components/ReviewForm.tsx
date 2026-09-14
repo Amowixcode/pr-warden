@@ -35,7 +35,7 @@ export function ReviewForm({ apiKey }: { apiKey: string }) {
             className="mono"
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
-            placeholder="owner/repo"
+            placeholder="e.g. facebook/react or vercel/next.js"
             required
           />
         </div>

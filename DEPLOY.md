@@ -24,6 +24,13 @@ browser access from a frontend). Set all of them in production.
 default under `./data/` relative to the container's `/app` working directory), and a `/health`
 health check.
 
+## Health endpoints
+
+| Endpoint | Purpose | Auth | I/O |
+|---|---|---|---|
+| `GET /health` | Liveness. Answers from process state only. This is Render's `healthCheckPath` — it's polled on every deploy and continuously afterwards, so it must stay cheap and never depend on GitHub/OpenAI/ChromaDB being reachable. | Never required | None |
+| `GET /health/deep` | The full setup/health check (Settings, GitHub, OpenAI, ChromaDB, Supabase) — same payload `/health` used to return before the split. For manual verification or monitoring, not polled by Render. | `X-API-Key` required when `API_SHARED_KEY` is set (it reveals whether GitHub/OpenAI credentials are valid) | Live network calls to GitHub, OpenAI, ChromaDB, Supabase |
+
 1. Push this branch (with `render.yaml` and `Dockerfile`) to GitHub.
 2. In the Render dashboard: **New → Blueprint**, select this repo.
 3. Render reads `render.yaml` and creates the web service + disk. You'll be prompted to fill in
@@ -42,8 +49,11 @@ health check.
 
 ## Verifying the deploy (manual — do this after deploying)
 
-1. `curl https://<your-service>.onrender.com/health` → expect `200` and
-   `{"checks": [...], "all_passed": true}` (assuming GitHub/OpenAI/Chroma are all reachable).
+1. `curl https://<your-service>.onrender.com/health` → expect `200` and `{"status": "ok"}`
+   immediately, regardless of GitHub/OpenAI/Chroma reachability.
+   `curl https://<your-service>.onrender.com/health/deep` (add `-H "X-API-Key: ..."` if
+   `API_SHARED_KEY` is set) → expect `200` and `{"checks": [...], "all_passed": true}`
+   (assuming GitHub/OpenAI/Chroma are all reachable).
 2. Ingest a small repo against the live URL, e.g.:
    ```bash
    curl -X POST https://<your-service>.onrender.com/ingest \

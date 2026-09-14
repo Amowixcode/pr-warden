@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from agents.graph import graph
 from agents.state import AgentResult, ReviewState
-from config.settings import settings
+from config.settings import get_settings
 from core import supabase_history
 from core.review_history import load_review_record, save_review_record
 from gh.client import GitHubClient
@@ -71,6 +71,7 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
     Returns:
         A ReviewResult with summary, verdict, issues, and suggestions.
     """
+    settings = get_settings()
     client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
     pr = await fetch_pull_request(client, owner, repo, pr_number)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from config.settings import settings
+from config.settings import get_settings
 from retrieval.context_builder import ReviewRecord
 
 
@@ -12,7 +12,7 @@ def _key(owner: str, repo: str, pr_number: int) -> str:
 
 
 def _resolve_path(path: str | None) -> Path:
-    return Path(path or settings.review_history_path)
+    return Path(path or get_settings().review_history_path)
 
 
 def _load_all(path: str | None) -> dict[str, dict]:
