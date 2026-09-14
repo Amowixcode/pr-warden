@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core.review_history import load_review_record, save_review_record
+import pytest
+
+from core.review_history import get_review_by_id, load_review_record, save_review_record
 from retrieval.context_builder import PersistedAgentResult, ReviewRecord
 
 _NOW = datetime(2024, 6, 1, tzinfo=UTC)
@@ -83,3 +85,63 @@ def test_different_repos_do_not_clobber_each_other(tmp_path: Path) -> None:
     assert b is not None
     assert a.head_sha == "sha-a"
     assert b.head_sha == "sha-b"
+
+
+def _supabase_row(review_id: int = 1, repo: str = "owner/repo", pr_number: int = 7) -> dict:
+    return {
+        "id": review_id,
+        "repo": repo,
+        "pr_number": pr_number,
+        "head_sha": "deadbeef",
+        "verdict": "APPROVE",
+        "summary": "Looks good",
+        "issues": [],
+        "suggestions": [],
+        "created_at": "2024-06-01T00:00:00Z",
+    }
+
+
+def test_get_review_by_id_returns_none_when_supabase_row_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("core.review_history.supabase_history.get_review", lambda _id: None)
+
+    assert get_review_by_id(1) is None
+
+
+def test_get_review_by_id_merges_local_per_agent_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = str(tmp_path / "review_history.json")
+    save_review_record("owner", "repo", 7, _make_record(head_sha="deadbeef"), path=path)
+    monkeypatch.setattr(
+        "core.review_history.supabase_history.get_review",
+        lambda _id: _supabase_row(),
+    )
+
+    result = get_review_by_id(1, path=path)
+
+    assert result is not None
+    assert result["id"] == 1
+    assert result["repo"] == "owner/repo"
+    assert result["security_result"] is not None
+    assert result["security_result"].summary == "ok"
+    assert result["quality_result"] is not None
+    assert result["test_result"] is not None
+
+
+def test_get_review_by_id_null_per_agent_results_when_local_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = str(tmp_path / "review_history.json")
+    monkeypatch.setattr(
+        "core.review_history.supabase_history.get_review",
+        lambda _id: _supabase_row(),
+    )
+
+    result = get_review_by_id(1, path=path)
+
+    assert result is not None
+    assert result["security_result"] is None
+    assert result["quality_result"] is None
+    assert result["test_result"] is None

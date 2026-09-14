@@ -64,6 +64,23 @@ def save_ingest(owner: str, repo: str, result: IngestResult, last_ingested_at: d
         logger.warning("Failed to write ingest history to Supabase", exc_info=True)
 
 
+def get_review(review_id: int) -> dict | None:
+    """Return a single review row by id, or None if not found or Supabase isn't configured.
+
+    Never raises — a Supabase outage or missing row both degrade to None, letting the caller
+    return a clean 404 rather than a 500.
+    """
+    client = get_supabase_client()
+    if client is None:
+        return None
+    try:
+        response = client.table(_REVIEWS_TABLE).select("*").eq("id", review_id).limit(1).execute()
+    except Exception:
+        logger.warning("Failed to read review %s from Supabase", review_id, exc_info=True)
+        return None
+    return response.data[0] if response.data else None
+
+
 def list_reviews(limit: int = 50) -> list[dict]:
     """Return the most recent reviews from Supabase, newest first.
 

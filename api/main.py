@@ -22,6 +22,7 @@ from api.routes.history import router as history_router
 from api.routes.ingest import router as ingest_router
 from api.routes.prs import router as prs_router
 from api.routes.review import router as review_router
+from api.routes.review_detail import router as review_detail_router
 from core.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ app.include_router(ingest_router, dependencies=[Depends(require_api_key)])
 app.include_router(history_router, dependencies=[Depends(require_api_key)])
 app.include_router(prs_router, dependencies=[Depends(require_api_key)])
 app.include_router(health_router)
+app.include_router(review_detail_router)
 
 
 @app.exception_handler(ValidationError)
