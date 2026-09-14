@@ -438,3 +438,73 @@ def test_prs_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -
     response = client.get("/prs/octocat/Hello-World", headers={"X-API-Key": "s3cr3t"})
 
     assert response.status_code == 200
+
+
+# ── Review detail ────────────────────────────────────────────────────────────
+
+
+def _review_detail_row() -> dict:
+    return {
+        "id": 1,
+        "repo": "octocat/Hello-World",
+        "pr_number": 7,
+        "head_sha": "deadbeef",
+        "verdict": "REQUEST_CHANGES",
+        "summary": "1 issue flagged",
+        "issues": ["path/to/file.py:10 - hardcoded secret"],
+        "suggestions": [],
+        "security_result": _agent_result(verdict="REQUEST_CHANGES"),
+        "quality_result": _agent_result(),
+        "test_result": _agent_result(),
+        "created_at": "2024-06-01T00:00:00Z",
+    }
+
+
+def test_review_detail_endpoint_returns_full_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "api.routes.review_detail.get_review_by_id", lambda _id: _review_detail_row()
+    )
+
+    response = client.get("/reviews/1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == 1
+    assert data["verdict"] == "REQUEST_CHANGES"
+    assert data["security_result"]["verdict"] == "REQUEST_CHANGES"
+    assert data["quality_result"] is not None
+
+
+def test_review_detail_endpoint_null_per_agent_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _review_detail_row()
+    row["security_result"] = None
+    row["quality_result"] = None
+    row["test_result"] = None
+    monkeypatch.setattr("api.routes.review_detail.get_review_by_id", lambda _id: row)
+
+    response = client.get("/reviews/1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["security_result"] is None
+    assert data["quality_result"] is None
+    assert data["test_result"] is None
+
+
+def test_review_detail_endpoint_404_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.routes.review_detail.get_review_by_id", lambda _id: None)
+
+    response = client.get("/reviews/999")
+
+    assert response.status_code == 404
+
+
+def test_review_detail_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+    monkeypatch.setattr(
+        "api.routes.review_detail.get_review_by_id", lambda _id: _review_detail_row()
+    )
+
+    response = client.get("/reviews/1")
+
+    assert response.status_code == 200

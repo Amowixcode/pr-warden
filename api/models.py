@@ -88,3 +88,20 @@ class ReviewHistoryItem(BaseModel):
     issues: list[str]
     suggestions: list[str]
     created_at: datetime
+
+
+class ReviewDetailResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    repo: str
+    pr_number: int
+    head_sha: str
+    verdict: str
+    summary: str
+    issues: list[str]
+    suggestions: list[str]
+    security_result: AgentResultModel | None = None
+    quality_result: AgentResultModel | None = None
+    test_result: AgentResultModel | None = None
+    created_at: datetime

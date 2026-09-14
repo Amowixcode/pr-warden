@@ -132,3 +132,43 @@ def test_list_reviews_returns_empty_on_error(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
 
     assert supabase_history.list_reviews() == []
+
+
+def test_get_review_returns_none_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: None)
+
+    assert supabase_history.get_review(1) is None
+
+
+def test_get_review_returns_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_client = MagicMock()
+    row = {"id": 1, "repo": "octocat/Hello-World", "pr_number": 7}
+    query = mock_client.table.return_value.select.return_value.eq.return_value.limit
+    query.return_value.execute.return_value = MagicMock(data=[row])
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    result = supabase_history.get_review(1)
+
+    assert result == row
+    mock_client.table.assert_called_once_with("reviews")
+    mock_client.table.return_value.select.assert_called_once_with("*")
+    mock_client.table.return_value.select.return_value.eq.assert_called_once_with("id", 1)
+    query.assert_called_once_with(1)
+
+
+def test_get_review_returns_none_when_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_client = MagicMock()
+    query = mock_client.table.return_value.select.return_value.eq.return_value.limit
+    query.return_value.execute.return_value = MagicMock(data=[])
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    assert supabase_history.get_review(999) is None
+
+
+def test_get_review_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_client = MagicMock()
+    query = mock_client.table.return_value.select.return_value.eq.return_value.limit
+    query.return_value.execute.side_effect = RuntimeError("down")
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    assert supabase_history.get_review(1) is None

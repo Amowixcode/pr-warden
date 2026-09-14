@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pr-warden — home screen mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* ===========================================================================
+   Token layer. HSL triples with semantic names, plus a --sidebar-* namespace.
+   Mirrors the structure of the reference; replaces the hex tokens currently
+   in frontend/src/index.css. Light is the base; dark overrides only tokens.
+   =========================================================================== */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+
+  --card: 0 0% 100%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --subtle-foreground: 0 0% 58%;
+
+  --primary: 234 55% 58%;
+  --primary-foreground: 0 0% 100%;
+
+  --destructive: 345 72% 51%;
+  --warning: 38 92% 45%;
+  --success: 142 70% 36%;
+  --info: 199 89% 43%;
+
+  --border: 0 0% 90%;
+  --radius: 0.375rem;
+
+  --sidebar-background: 0 0% 98%;
+  --sidebar-foreground: 0 0% 40%;
+  --sidebar-accent: 0 0% 94%;
+  --sidebar-accent-foreground: 0 0% 9%;
+  --sidebar-border: 0 0% 92%;
+
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: 240 6% 6%;
+    --foreground: 0 0% 90%;
+    --card: 240 5% 9%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 0 0% 50%;
+    --subtle-foreground: 0 0% 38%;
+    --primary: 234 55% 60%;
+    --primary-foreground: 0 0% 100%;
+    --destructive: 345 90% 60%;
+    --warning: 38 100% 55%;
+    --success: 145 100% 45%;
+    --info: 199 100% 55%;
+    --border: 240 4% 20%;
+    --sidebar-background: 240 6% 5%;
+    --sidebar-foreground: 0 0% 55%;
+    --sidebar-accent: 240 5% 10%;
+    --sidebar-accent-foreground: 0 0% 85%;
+    --sidebar-border: 240 4% 18%;
+  }
+}
+
+:root.dark {
+  --background: 240 6% 6%;
+  --foreground: 0 0% 90%;
+  --card: 240 5% 9%;
+  --muted: 240 4% 14%;
+  --muted-foreground: 0 0% 50%;
+  --subtle-foreground: 0 0% 38%;
+  --primary: 234 55% 60%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 345 90% 60%;
+  --warning: 38 100% 55%;
+  --success: 145 100% 45%;
+  --info: 199 100% 55%;
+  --border: 240 4% 20%;
+  --sidebar-background: 240 6% 5%;
+  --sidebar-foreground: 0 0% 55%;
+  --sidebar-accent: 240 5% 10%;
+  --sidebar-accent-foreground: 0 0% 85%;
+  --sidebar-border: 240 4% 18%;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2 { font-weight: 500; letter-spacing: -.015em; margin: 0; }
+
+.mono { font-family: var(--font-mono); }
+
+.mockup-note {
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  padding: 7px 14px;
+  text-align: center;
+}
+
+.layout { display: flex; min-height: 100vh; }
+
+/* ---------------- sidebar: 208px, dense rows, icons ---------------- */
+.sidebar {
+  flex: 0 0 208px;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--sidebar-background));
+  border-right: 1px solid hsl(var(--sidebar-border));
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.workspace {
+  display: flex; align-items: center; gap: 8px;
+  height: 44px; padding: 0 12px;
+  border-bottom: 1px solid hsl(var(--sidebar-border));
+  flex-shrink: 0;
+}
+.workspace span {
+  font-weight: 700; font-size: 14px;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: hsl(var(--sidebar-accent-foreground));
+}
+.nav { flex: 1; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  font: inherit; font-size: 13px;
+  color: hsl(var(--sidebar-foreground));
+  background: none; border: none; width: 100%;
+  text-align: left; cursor: pointer;
+}
+.nav-item:hover { background: hsl(var(--sidebar-accent)); color: hsl(var(--sidebar-accent-foreground)); }
+.nav-item.active { background: hsl(var(--sidebar-accent)); color: hsl(var(--sidebar-accent-foreground)); }
+.nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-item:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: -2px; }
+
+.sidebar-footer { border-top: 1px solid hsl(var(--sidebar-border)); padding: 6px; }
+.theme-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 6px 8px;
+  border: none; background: none; border-radius: var(--radius);
+  font: inherit; font-size: 12px; color: hsl(var(--sidebar-foreground));
+  cursor: pointer;
+}
+.theme-btn:hover { background: hsl(var(--sidebar-accent)); color: hsl(var(--sidebar-accent-foreground)); }
+.theme-btn svg { width: 14px; height: 14px; }
+
+/* ---------------- main ---------------- */
+.main { flex: 1; min-width: 0; padding: 24px 28px 56px; max-width: 900px; }
+
+.intro { margin-bottom: 20px; }
+.intro h1 { font-size: 19px; margin-bottom: 4px; }
+.intro p { margin: 0; color: hsl(var(--muted-foreground)); font-size: 13px; max-width: 68ch; }
+.intro a { color: hsl(var(--primary)); text-underline-offset: 2px; }
+
+/* ---------------- verdict card: the one loud element ---------------- */
+.card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  height: auto; min-height: 44px;
+  padding: 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.target { font-family: var(--font-mono); font-size: 13px; }
+.target a { color: hsl(var(--foreground)); text-decoration: none; border-bottom: 1px solid hsl(var(--border)); }
+.target a:hover { color: hsl(var(--primary)); border-color: hsl(var(--primary)); }
+.head-meta {
+  margin-left: auto; font-family: var(--font-mono);
+  font-size: 11px; color: hsl(var(--subtle-foreground));
+}
+
+/* The single filled badge on the page. */
+.verdict-pill {
+  display: inline-flex; align-items: center;
+  background: hsl(var(--destructive));
+  color: hsl(0 0% 100%);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: var(--radius);
+}
+
+/* Everything else is quiet: a dot and muted text. */
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: hsl(var(--muted-foreground));
+}
+.tag .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-sec { background: hsl(var(--destructive)); }
+.dot-qua { background: hsl(var(--warning)); }
+.dot-tst { background: hsl(var(--info)); }
+.dot-ok  { background: hsl(var(--success)); }
+
+.card-body { padding: 14px; }
+.summary { margin: 0 0 12px; font-size: 14px; }
+
+.findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.finding {
+  display: grid; grid-template-columns: 2px 1fr;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+.rail-sec { background: hsl(var(--destructive)); }
+.rail-qua { background: hsl(var(--warning)); }
+.rail-tst { background: hsl(var(--info)); }
+.finding-body { padding: 9px 12px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.loc {
+  font-family: var(--font-mono); font-size: 12px;
+  color: hsl(var(--primary)); word-break: break-all;
+}
+.what { font-size: 13px; }
+.what code { font-family: var(--font-mono); font-size: .92em; }
+
+/* ---------------- indexed strip ---------------- */
+.strip {
+  display: flex; flex-wrap: wrap;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  margin-top: 10px; overflow: hidden;
+  background: hsl(var(--card));
+}
+.strip-lead {
+  display: flex; align-items: center;
+  padding: 10px 14px; font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  border-right: 1px solid hsl(var(--border));
+}
+.stat { flex: 1; min-width: 104px; padding: 9px 16px; border-right: 1px solid hsl(var(--border)); }
+.stat:last-child { border-right: 0; }
+.stat b {
+  display: block; font-family: var(--font-mono);
+  font-size: 16px; font-weight: 500; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.stat span {
+  font-size: 10.5px; color: hsl(var(--subtle-foreground));
+  text-transform: uppercase; letter-spacing: .07em;
+}
+
+/* ---------------- section label ---------------- */
+h2.label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .1em;
+  color: hsl(var(--subtle-foreground));
+  margin: 30px 0 8px;
+}
+
+/* ---------------- agent tabs ---------------- */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 11px;
+  background: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--muted-foreground));
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.tab:hover { color: hsl(var(--foreground)); }
+.tab[aria-selected="true"] {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.tab:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+.tab .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.tab .n {
+  font-family: var(--font-mono); font-size: 11px;
+  color: hsl(var(--subtle-foreground)); font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  margin-top: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  padding: 13px 14px;
+}
+.panel[hidden] { display: none; }
+.panel-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.panel-head p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+/* ---------------- how it works ---------------- */
+.flow {
+  display: flex; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); overflow: hidden; background: hsl(var(--card));
+}
+.step { flex: 1; min-width: 148px; padding: 12px 14px; border-right: 1px solid hsl(var(--border)); }
+.step:last-child { border-right: 0; }
+.step-cmd {
+  font-family: var(--font-mono); font-size: 12px;
+  color: hsl(var(--primary)); margin-bottom: 4px; word-break: break-all;
+}
+.step-what { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+
+/* ---------------- secondary ---------------- */
+.secondary {
+  margin-top: 28px; padding-top: 16px;
+  border-top: 1px solid hsl(var(--border));
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  border: 1px solid transparent; border-radius: var(--radius);
+  padding: 7px 13px; font: inherit; font-size: 13px; font-weight: 500;
+  cursor: pointer;
+}
+.btn.ghost {
+  background: none; color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.btn:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+.btn svg { width: 14px; height: 14px; }
+.secondary p { margin: 0; font-size: 12px; color: hsl(var(--subtle-foreground)); }
+
+@media (max-width: 760px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    flex: none; height: auto; position: static;
+    flex-direction: row; align-items: center;
+    overflow-x: auto; border-right: 0;
+    border-bottom: 1px solid hsl(var(--sidebar-border));
+  }
+  .workspace { border-bottom: 0; border-right: 1px solid hsl(var(--sidebar-border)); }
+  .nav { flex-direction: row; }
+  .nav-item { width: auto; white-space: nowrap; }
+  .sidebar-footer { border-top: 0; }
+  .main { padding: 16px 14px 40px; }
+  .strip-lead { width: 100%; border-right: 0; border-bottom: 1px solid hsl(var(--border)); }
+  .flow { flex-direction: column; }
+  .step { border-right: 0; border-bottom: 1px solid hsl(var(--border)); }
+  .step:last-child { border-bottom: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="mockup-note">
+  Mockup. The findings are real defects in this codebase, but the verdict card must be replaced
+  with output from an actual review run before this ships.
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="workspace">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="1.5" width="10" height="3.5" rx="0.5"/>
+        <rect x="4.5" y="6.5" width="10" height="3.5" rx="0.5"/>
+        <rect x="2" y="11.5" width="10" height="3.5" rx="0.5"/>
+      </svg>
+      <span>pr-warden</span>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <button class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+        Home
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>
+        Review a PR
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Open PRs
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        History
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+        Ingest a repo
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="theme-btn" id="themeBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>
+        Theme
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <div class="intro">
+      <h1>Context-aware pull request review</h1>
+      <p>
+        Indexes a repository's history into a vector store, then runs three agents in parallel
+        against a pull request: security, code quality, and test coverage.
+        <a href="#">See the code on GitHub</a>
+      </p>
+    </div>
+
+    <!-- The verdict card. One filled badge on the whole page. -->
+    <div class="card">
+      <div class="card-head">
+        <span class="verdict-pill">Request changes</span>
+        <span class="target"><a href="#">Amowixcode/pr-warden&nbsp;#103</a></span>
+        <span class="tag"><span class="dot dot-ok"></span>incremental</span>
+        <span class="head-meta">4.1s · 3 agents</span>
+      </div>
+      <div class="card-body">
+        <p class="summary">3 issues flagged by security, quality, and test coverage.</p>
+        <ul class="findings">
+          <li class="finding">
+            <span class="rail-sec"></span>
+            <span class="finding-body">
+              <span class="loc">api/routes/health.py:6</span>
+              <span class="what">
+                The health endpoint calls external APIs. Render polls this path continuously, so
+                every poll spends GitHub and OpenAI quota with no user traffic.
+              </span>
+              <span class="tag"><span class="dot dot-sec"></span>security</span>
+            </span>
+          </li>
+          <li class="finding">
+            <span class="rail-qua"></span>
+            <span class="finding-body">
+              <span class="loc">config/settings.py:37</span>
+              <span class="what">
+                <code>Settings()</code> is instantiated at module scope. A malformed environment
+                variable crashes during import, before FastAPI and its error handler exist.
+              </span>
+              <span class="tag"><span class="dot dot-qua"></span>quality</span>
+            </span>
+          </li>
+          <li class="finding">
+            <span class="rail-tst"></span>
+            <span class="finding-body">
+              <span class="loc">frontend/src/components/ReviewForm.tsx:60</span>
+              <span class="what">
+                The loading message is hardcoded and shown unconditionally. No test covers which
+                message appears in which phase of the request.
+              </span>
+              <span class="tag"><span class="dot dot-tst"></span>test coverage</span>
+            </span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="strip">
+      <span class="strip-lead">Context retrieved for this review</span>
+      <div class="stat"><b>412</b><span>issues</span></div>
+      <div class="stat"><b>1,840</b><span>commits</span></div>
+      <div class="stat"><b>296</b><span>merged PRs</span></div>
+    </div>
+
+    <h2 class="label">What each agent found</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" aria-controls="p1" id="t1">
+        <span class="dot dot-sec"></span>Security<span class="n">1</span>
+      </button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="p2" id="t2">
+        <span class="dot dot-qua"></span>Quality<span class="n">1</span>
+      </button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="p3" id="t3">
+        <span class="dot dot-tst"></span>Test coverage<span class="n">1</span>
+      </button>
+    </div>
+
+    <div class="panel" role="tabpanel" id="p1" aria-labelledby="t1">
+      <div class="panel-head">
+        <span class="tag"><span class="dot dot-sec"></span>Request changes</span>
+        <p>External calls from an endpoint that is polled automatically.</p>
+      </div>
+      <ul class="findings">
+        <li class="finding"><span class="rail-sec"></span><span class="finding-body">
+          <span class="loc">api/routes/health.py:6</span>
+          <span class="what"><code>run_doctor_checks()</code> performs live GitHub and OpenAI calls in a route configured as <code>healthCheckPath</code>.</span>
+        </span></li>
+      </ul>
+    </div>
+
+    <div class="panel" role="tabpanel" id="p2" aria-labelledby="t2" hidden>
+      <div class="panel-head">
+        <span class="tag"><span class="dot dot-qua"></span>Comment</span>
+        <p>One structural issue in the configuration layer.</p>
+      </div>
+      <ul class="findings">
+        <li class="finding"><span class="rail-qua"></span><span class="finding-body">
+          <span class="loc">config/settings.py:37</span>
+          <span class="what">Module-scope instantiation turns a config error into an import error, which no exception handler can catch.</span>
+        </span></li>
+      </ul>
+    </div>
+
+    <div class="panel" role="tabpanel" id="p3" aria-labelledby="t3" hidden>
+      <div class="panel-head">
+        <span class="tag"><span class="dot dot-tst"></span>Comment</span>
+        <p>One uncovered case in the frontend's state handling.</p>
+      </div>
+      <ul class="findings">
+        <li class="finding"><span class="rail-tst"></span><span class="finding-body">
+          <span class="loc">frontend/src/components/ReviewForm.tsx:60</span>
+          <span class="what">No test asserts which message is shown in which phase of the request.</span>
+        </span></li>
+      </ul>
+    </div>
+
+    <h2 class="label">How it works</h2>
+    <div class="flow">
+      <div class="step">
+        <div class="step-cmd">warden ingest</div>
+        <div class="step-what">Issues, commits and merged PRs are embedded into a vector store. Once per repo.</div>
+      </div>
+      <div class="step">
+        <div class="step-cmd">warden review</div>
+        <div class="step-what">Relevant history is retrieved, then three agents assess the diff in parallel.</div>
+      </div>
+      <div class="step">
+        <div class="step-cmd">→ verdict</div>
+        <div class="step-what">Findings merge deterministically. Every finding must quote the diff verbatim.</div>
+      </div>
+    </div>
+
+    <div class="secondary">
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>
+        Review another PR
+      </button>
+      <button class="btn ghost">Browse all reviews</button>
+      <p>No key needed to read results.</p>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  function select(tab) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+  tabs.forEach((t) => t.addEventListener('click', () => select(t)));
+  document.querySelector('.tabs').addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      n.focus(); select(n);
+    }
+  });
+
+  // Mirrors next-themes: explicit choice wins, otherwise the system setting.
+  const root = document.documentElement;
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = root.classList.contains('dark') || (systemDark && !root.classList.contains('light'));
+    root.classList.remove('dark', 'light');
+    root.classList.add(isDark ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>
