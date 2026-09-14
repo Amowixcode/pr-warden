@@ -1,10 +1,20 @@
 import { useState } from "react";
 import { ApiError, listOpenPrs } from "../api/client";
 import type { OpenPRResponse } from "../api/types";
+import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
+import { LoadingBanner } from "./LoadingBanner";
 
-export function OpenPrsList({ apiKey }: { apiKey: string }) {
+export function OpenPrsList({
+  apiKey,
+  onReview,
+}: {
+  apiKey: string;
+  onReview: (repo: string, prNumber: number) => void;
+}) {
   const [repo, setRepo] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submittedRepo, setSubmittedRepo] = useState<string | null>(null);
+  const { phase, run } = useHealthAwareLoading();
+  const loading = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
   const [prs, setPrs] = useState<OpenPRResponse[] | null>(null);
 
@@ -17,14 +27,12 @@ export function OpenPrsList({ apiKey }: { apiKey: string }) {
     }
     setError(null);
     setPrs(null);
-    setLoading(true);
     try {
-      const data = await listOpenPrs(parts[0], parts[1], apiKey);
+      const data = await run(() => listOpenPrs(parts[0], parts[1], apiKey));
       setPrs(data);
+      setSubmittedRepo(`${parts[0]}/${parts[1]}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load open PRs.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -47,12 +55,7 @@ export function OpenPrsList({ apiKey }: { apiKey: string }) {
         </button>
       </form>
 
-      {loading && (
-        <div className="loading-banner">
-          <span className="spinner" />
-          Waking up the server — this can take up to a minute on the first request.
-        </div>
-      )}
+      <LoadingBanner phase={phase} runningLabel="Loading open PRs" />
 
       {error && <div className="error-banner">{error}</div>}
 
@@ -72,15 +75,33 @@ export function OpenPrsList({ apiKey }: { apiKey: string }) {
                   <th>Title</th>
                   <th>Author</th>
                   <th>Age</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {prs.map((pr) => (
                   <tr key={pr.number}>
-                    <td className="mono">#{pr.number}</td>
+                    <td className="mono">
+                      <a
+                        href={`https://github.com/${submittedRepo}/pull/${pr.number}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        #{pr.number}
+                      </a>
+                    </td>
                     <td>{pr.title}</td>
                     <td>{pr.author}</td>
                     <td>{pr.age_days}d</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => submittedRepo && onReview(submittedRepo, pr.number)}
+                      >
+                        Review
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

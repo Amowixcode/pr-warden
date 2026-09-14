@@ -12,6 +12,10 @@ const CLASS: Record<Verdict, string> = {
   COMMENT: "comment",
 };
 
+/**
+ * The one filled, saturated badge per view — the single hero verdict (Home's featured card,
+ * a live review result, a review-detail view). Every other status indicator uses StatusTag.
+ */
 export function VerdictBadge({ verdict }: { verdict: Verdict }) {
-  return <span className={`pill ${CLASS[verdict]}`}>{LABEL[verdict]}</span>;
+  return <span className={`verdict-pill ${CLASS[verdict]}`}>{LABEL[verdict]}</span>;
 }
