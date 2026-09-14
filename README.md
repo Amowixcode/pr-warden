@@ -5,7 +5,27 @@
 Context-aware PR review CLI built with LangGraph multi-agent orchestration and RAG. Indexes a
 GitHub repo's history (issues, merged PRs, commits) into ChromaDB, then reviews pull requests
 with three specialist OpenAI-backed agents — security, quality, and test coverage — running in
-parallel and merged into one verdict.
+parallel and merged into one verdict. Available as a CLI (below) or as a hosted
+[web app](#web-app).
+
+![Completed review in the web app](docs/screenshots/review-verdict.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[GitHub repo<br/>issues, PRs, commits] -->|warden ingest| B[(ChromaDB<br/>vector store)]
+    B --> C[Retrieval<br/>PR context]
+    C --> D[Security agent]
+    C --> E[Quality agent]
+    C --> F[Test agent]
+    D --> G[Summarizer]
+    E --> G
+    F --> G
+    G --> H[Final Verdict]
+```
+
+See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
 
 ## Usage
 
@@ -46,8 +66,6 @@ warden doctor                          # run setup/health checks (GitHub token, 
    non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`) — this
    is enforced at merge time even if an individual agent's own verdict and issues list disagree.
 
-See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
-
 ## Output format
 
 `warden review` prints a **Final Verdict** section — the merged verdict, issues, and
@@ -70,6 +88,38 @@ agents can focus on what's new. If nothing has changed since the last review, no
 OpenAI calls) run at all; the cached verdict is returned directly. Pass `--full` to always do a
 complete review, ignoring history.
 
+## Web app
+
+A hosted web UI sits on top of the same review engine, for people who'd rather click than
+type CLI commands:
+
+- **App**: https://pr-warden.vercel.app
+- **API**: https://pr-warden.onrender.com — interactive docs at
+  [pr-warden.onrender.com/docs](https://pr-warden.onrender.com/docs)
+
+The frontend (`frontend/`, React + Vite) has four tabs, each calling the API below:
+
+| Tab | Does |
+|---|---|
+| Ingest | Index a GitHub repo's issues, commits, and merged PRs so pr-warden has context for reviews |
+| Review | Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict |
+| History | See past reviews pr-warden has run, with their verdicts and summaries |
+| PRs | Browse a repo's open pull requests and jump straight into reviewing one |
+
+### API endpoints
+
+| Method | Path | Auth |
+|---|---|---|
+| `GET` | `/health` | none |
+| `GET` | `/health/deep` | API key, if `API_SHARED_KEY` is set |
+| `POST` | `/ingest` | API key |
+| `POST` | `/review` | API key + per-review rate limit |
+| `GET` | `/reviews` | API key |
+| `GET` | `/prs/{owner}/{repo}` | API key |
+
+See [`DEPLOY.md`](DEPLOY.md) for how the API (Render) and frontend (Vercel) are deployed and
+wired together, including the two-pass deploy order.
+
 ## Supabase setup (optional)
 
 Local JSON history (above) is all that's needed for the CLI's incremental caching. Supabase is
@@ -81,3 +131,21 @@ an optional, additive store on top of that, used to serve `GET /reviews` from th
 
 Without these two variables set, review/ingest still work exactly as before — Supabase writes
 are skipped, and `GET /reviews` returns `[]`.
+
+## Known Limitations
+
+Accepted for now and tracked as open issues rather than blockers:
+
+- The web app's demo API key is entered client-side and stored in the browser's
+  `localStorage` — a convenience for demoing, not real access control
+  ([#112](https://github.com/Amowixcode/pr-warden/issues/112)).
+- There's no hard spending cap on OpenAI usage, only a per-review rate limit
+  ([#92](https://github.com/Amowixcode/pr-warden/issues/92)).
+- The web UI has rough edges: no landing/home view, the PR list doesn't lead anywhere useful
+  yet, and past reviews in History aren't directly reopenable
+  ([#111](https://github.com/Amowixcode/pr-warden/issues/111)).
+- The API runs on Render's free tier, which spins down after inactivity — the first request
+  after idle time is slower than the rest.
+- Review/ingest history is local JSON plus an optional Supabase mirror; there's no
+  multi-tenant or per-user isolation.
+- OpenAI is the only supported LLM/embedding provider.
