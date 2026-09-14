@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { ApiError, ingestRepository } from "../api/client";
 import type { IngestResponse } from "../api/types";
+import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
+import { LoadingBanner } from "./LoadingBanner";
 
 export function IngestForm({ apiKey }: { apiKey: string }) {
   const [repo, setRepo] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { phase, run } = useHealthAwareLoading();
+  const loading = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IngestResponse | null>(null);
 
@@ -12,14 +15,11 @@ export function IngestForm({ apiKey }: { apiKey: string }) {
     e.preventDefault();
     setError(null);
     setResult(null);
-    setLoading(true);
     try {
-      const data = await ingestRepository(repo, apiKey);
+      const data = await run(() => ingestRepository(repo, apiKey));
       setResult(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -42,12 +42,7 @@ export function IngestForm({ apiKey }: { apiKey: string }) {
         </button>
       </form>
 
-      {loading && (
-        <div className="loading-banner">
-          <span className="spinner" />
-          Waking up the server — this can take up to a minute on the first request.
-        </div>
-      )}
+      <LoadingBanner phase={phase} runningLabel="Ingesting" />
 
       {error && <div className="error-banner">{error}</div>}
 

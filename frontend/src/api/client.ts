@@ -1,4 +1,10 @@
-import type { IngestResponse, OpenPRResponse, ReviewHistoryItem, ReviewResponse } from "./types";
+import type {
+  IngestResponse,
+  OpenPRResponse,
+  ReviewDetail,
+  ReviewHistoryItem,
+  ReviewResponse,
+} from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -74,4 +80,14 @@ export function ingestRepository(repo: string, apiKey: string): Promise<IngestRe
     { method: "POST", body: JSON.stringify({ repo }) },
     apiKey,
   );
+}
+
+/** GET /health — no API key needed. Used to tell "server is cold" from "request in flight". */
+export function getHealth(): Promise<{ status: string }> {
+  return request<{ status: string }>("/health", { method: "GET" }, "");
+}
+
+/** GET /reviews/{id} — no API key needed; a single full review, including per-agent detail. */
+export function getReviewDetail(id: number, apiKey: string): Promise<ReviewDetail> {
+  return request<ReviewDetail>(`/reviews/${id}`, { method: "GET" }, apiKey);
 }

@@ -1,12 +1,24 @@
 import { useState } from "react";
 import { ApiError, reviewPr } from "../api/client";
 import type { ReviewResponse } from "../api/types";
+import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
+import { LoadingBanner } from "./LoadingBanner";
 import { ReviewResults } from "./ReviewResults";
 
-export function ReviewForm({ apiKey }: { apiKey: string }) {
-  const [repo, setRepo] = useState("");
-  const [prNumber, setPrNumber] = useState("");
-  const [loading, setLoading] = useState(false);
+export function ReviewForm({
+  apiKey,
+  prefillRepo,
+  prefillPr,
+}: {
+  apiKey: string;
+  prefillRepo?: string;
+  prefillPr?: number;
+}) {
+  const [repo, setRepo] = useState(prefillRepo ?? "");
+  const [prNumber, setPrNumber] = useState(prefillPr !== undefined ? String(prefillPr) : "");
+  const [submittedRepo, setSubmittedRepo] = useState<string | null>(null);
+  const { phase, run } = useHealthAwareLoading();
+  const loading = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReviewResponse | null>(null);
 
@@ -14,14 +26,12 @@ export function ReviewForm({ apiKey }: { apiKey: string }) {
     e.preventDefault();
     setError(null);
     setResult(null);
-    setLoading(true);
     try {
-      const data = await reviewPr(repo, Number(prNumber), apiKey);
+      const data = await run(() => reviewPr(repo, Number(prNumber), apiKey));
       setResult(data);
+      setSubmittedRepo(repo);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -57,16 +67,11 @@ export function ReviewForm({ apiKey }: { apiKey: string }) {
         </button>
       </form>
 
-      {loading && (
-        <div className="loading-banner">
-          <span className="spinner" />
-          Waking up the server — this can take up to a minute on the first request.
-        </div>
-      )}
+      <LoadingBanner phase={phase} runningLabel="Running review" />
 
       {error && <div className="error-banner">{error}</div>}
 
-      {result && !loading && <ReviewResults result={result} />}
+      {result && submittedRepo && !loading && <ReviewResults result={result} repo={submittedRepo} />}
     </div>
   );
 }
