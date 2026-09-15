@@ -121,15 +121,19 @@ def test_ingest_endpoint_invalid_repo_format() -> None:
     assert "owner/repo" in response.json()["detail"]
 
 
-def test_ingest_endpoint_requires_api_key_when_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """/ingest stays protected — it's the expensive operation, an operator action."""
+def test_ingest_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """POST /ingest is public — same as /reviews, /prs, and /health."""
     monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+    mock = AsyncMock(
+        return_value=IngestResult(
+            issues_indexed=0, prs_indexed=0, commits_indexed=0, total_newly_indexed=0
+        )
+    )
+    monkeypatch.setattr("api.routes.ingest.ingest_repository", mock)
 
     response = client.post("/ingest", json={"repo": "octocat/Hello-World"})
 
-    assert response.status_code == 401
+    assert response.status_code == 200
 
 
 def test_reviews_endpoint_returns_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:

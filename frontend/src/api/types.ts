@@ -49,6 +49,14 @@ export interface ReviewDetail {
   created_at: string;
 }
 
+export interface IngestResponse {
+  issues_indexed: number;
+  prs_indexed: number;
+  commits_indexed: number;
+  total_newly_indexed: number;
+  incremental: boolean;
+}
+
 export interface OpenPRResponse {
   number: number;
   title: string;

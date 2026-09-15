@@ -1,5 +1,6 @@
 import { Home } from "./components/Home";
 import { HistoryList } from "./components/HistoryList";
+import { IngestForm } from "./components/IngestForm";
 import { OpenPrsList } from "./components/OpenPrsList";
 import { ReviewDetail } from "./components/ReviewDetail";
 import { ReviewForm } from "./components/ReviewForm";
@@ -12,6 +13,7 @@ const TITLES: Record<Exclude<Section, "home">, string> = {
   review: "Review a pull request",
   history: "Review history",
   prs: "Open pull requests",
+  ingest: "Ingest a repo",
 };
 
 const DESCRIPTIONS: Record<Exclude<Section, "home">, string> = {
@@ -19,6 +21,8 @@ const DESCRIPTIONS: Record<Exclude<Section, "home">, string> = {
     "Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict.",
   history: "See past reviews pr-warden has run, with their verdicts and summaries.",
   prs: "Browse a repo's open pull requests and jump straight into reviewing one.",
+  ingest:
+    "Index a repository's issues, commits, and merged PRs into the vector store so reviews have historical context.",
 };
 
 function activeSection(route: ReturnType<typeof useHashRoute>["route"]): Section | null {
@@ -76,6 +80,7 @@ function App() {
                   }
                 />
               )}
+              {route.section === "ingest" && <IngestForm />}
             </>
           )}
         </div>

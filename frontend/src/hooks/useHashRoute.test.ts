@@ -36,12 +36,11 @@ describe("parseHash", () => {
   it("parses the plain section routes", () => {
     expect(parseHash("#/history")).toEqual({ view: "section", section: "history" });
     expect(parseHash("#/prs")).toEqual({ view: "section", section: "prs" });
+    expect(parseHash("#/ingest")).toEqual({ view: "section", section: "ingest" });
   });
 
   it("falls back to home for anything unrecognized — never a dead route", () => {
     expect(parseHash("#/nonsense")).toEqual({ view: "home" });
-    // /ingest is no longer a route at all — dropped from the public UI.
-    expect(parseHash("#/ingest")).toEqual({ view: "home" });
     expect(parseHash("#/review/not-a-number")).toEqual({
       view: "review-form",
       prefillRepo: undefined,
