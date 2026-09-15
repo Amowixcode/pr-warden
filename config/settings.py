@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     allowed_origin: str | None = None
     review_rate_limit_max_calls: int = 20
     review_rate_limit_window_seconds: int = 3600
+    review_allowed_repos: str | None = None
 
     @field_validator(
         "review_rate_limit_max_calls", "review_rate_limit_window_seconds", mode="before"

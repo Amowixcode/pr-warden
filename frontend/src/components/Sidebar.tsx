@@ -1,15 +1,14 @@
-import { Database, GitPullRequest, History as HistoryIcon, Home, List, Moon, Sun } from "lucide-react";
+import { GitPullRequest, History as HistoryIcon, Home, List, Moon, Sun } from "lucide-react";
 import type { Theme } from "../hooks/useTheme";
 import { StackedLogo } from "./StackedLogo";
 
-export type Section = "home" | "ingest" | "review" | "history" | "prs";
+export type Section = "home" | "review" | "history" | "prs";
 
 const ITEMS: { id: Section; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "review", label: "Review a PR", icon: GitPullRequest },
   { id: "prs", label: "Open PRs", icon: List },
   { id: "history", label: "History", icon: HistoryIcon },
-  { id: "ingest", label: "Ingest a repo", icon: Database },
 ];
 
 export function Sidebar({

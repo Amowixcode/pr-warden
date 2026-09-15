@@ -4,7 +4,7 @@ import type { ReviewDetail as ReviewDetailData } from "../api/types";
 import { AgentTabs } from "./AgentTabs";
 import { VerdictCard } from "./VerdictCard";
 
-export function ReviewDetail({ id, apiKey }: { id: number; apiKey: string }) {
+export function ReviewDetail({ id }: { id: number }) {
   const [review, setReview] = useState<ReviewDetailData | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export function ReviewDetail({ id, apiKey }: { id: number; apiKey: string }) {
     setNotFound(false);
     setReview(null);
 
-    getReviewDetail(id, apiKey)
+    getReviewDetail(id)
       .then((data) => {
         if (!cancelled) setReview(data);
       })
@@ -36,7 +36,7 @@ export function ReviewDetail({ id, apiKey }: { id: number; apiKey: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, apiKey]);
+  }, [id]);
 
   if (loading) {
     return (

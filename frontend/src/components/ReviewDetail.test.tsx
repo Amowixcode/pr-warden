@@ -27,7 +27,7 @@ describe("ReviewDetail", () => {
       created_at: "2024-06-01T00:00:00Z",
     });
 
-    render(<ReviewDetail id={1} apiKey="k" />);
+    render(<ReviewDetail id={1} />);
 
     expect(screen.getByText("Loading review…")).toBeInTheDocument();
     expect(await screen.findByText("Looks good")).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe("ReviewDetail", () => {
   it("shows a not-found state on a 404", async () => {
     vi.spyOn(client, "getReviewDetail").mockRejectedValue(new ApiError(404, "review not found"));
 
-    render(<ReviewDetail id={999} apiKey="k" />);
+    render(<ReviewDetail id={999} />);
 
     expect(await screen.findByText(/Review not found/)).toBeInTheDocument();
   });
@@ -58,7 +58,7 @@ describe("ReviewDetail", () => {
       created_at: "2024-06-01T00:00:00Z",
     });
 
-    render(<ReviewDetail id={1} apiKey="k" />);
+    render(<ReviewDetail id={1} />);
 
     expect(
       await screen.findAllByText("Per-agent detail not available for this review."),

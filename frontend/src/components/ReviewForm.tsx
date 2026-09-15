@@ -6,11 +6,9 @@ import { LoadingBanner } from "./LoadingBanner";
 import { ReviewResults } from "./ReviewResults";
 
 export function ReviewForm({
-  apiKey,
   prefillRepo,
   prefillPr,
 }: {
-  apiKey: string;
   prefillRepo?: string;
   prefillPr?: number;
 }) {
@@ -27,7 +25,7 @@ export function ReviewForm({
     setError(null);
     setResult(null);
     try {
-      const data = await run(() => reviewPr(repo, Number(prNumber), apiKey));
+      const data = await run(() => reviewPr(repo, Number(prNumber)));
       setResult(data);
       setSubmittedRepo(repo);
     } catch (err) {

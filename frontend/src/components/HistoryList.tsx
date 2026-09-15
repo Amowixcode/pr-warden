@@ -15,7 +15,7 @@ const VERDICT_DOT: Record<Verdict, "approve" | "request-changes" | "comment"> = 
   COMMENT: "comment",
 };
 
-export function HistoryList({ apiKey }: { apiKey: string }) {
+export function HistoryList() {
   const [items, setItems] = useState<ReviewHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +24,7 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getReviewHistory(apiKey)
+    getReviewHistory()
       .then((data) => {
         if (!cancelled) setItems(data);
       })
@@ -39,7 +39,7 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, []);
 
   if (loading) {
     return (
