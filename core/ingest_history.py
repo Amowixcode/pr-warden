@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from config.settings import settings
+from config.settings import get_settings
 
 
 class IngestRecord(BaseModel):
@@ -22,7 +22,7 @@ def _key(owner: str, repo: str) -> str:
 
 
 def _resolve_path(path: str | None) -> Path:
-    return Path(path or settings.ingest_history_path)
+    return Path(path or get_settings().ingest_history_path)
 
 
 def _load_all(path: str | None) -> dict[str, dict]:

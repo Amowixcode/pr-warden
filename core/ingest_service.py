@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from config.settings import settings
+from config.settings import get_settings
 from core import supabase_history
 from core.ingest_history import IngestRecord, load_ingest_record, save_ingest_record
 from gh.client import GitHubClient
@@ -47,6 +47,7 @@ async def ingest_repository(owner: str, repo: str, full: bool = False) -> Ingest
     Returns:
         IngestResult with counts of newly indexed documents per type.
     """
+    settings = get_settings()
     client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
 
     run_started_at = datetime.now(UTC)

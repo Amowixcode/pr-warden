@@ -34,6 +34,21 @@ export interface ReviewHistoryItem {
   created_at: string;
 }
 
+export interface ReviewDetail {
+  id: number;
+  repo: string;
+  pr_number: number;
+  head_sha: string;
+  verdict: Verdict;
+  summary: string;
+  issues: string[];
+  suggestions: string[];
+  security_result: AgentResult | null;
+  quality_result: AgentResult | null;
+  test_result: AgentResult | null;
+  created_at: string;
+}
+
 export interface OpenPRResponse {
   number: number;
   title: string;
@@ -41,10 +56,3 @@ export interface OpenPRResponse {
   age_days: number;
 }
 
-export interface IngestResponse {
-  issues_indexed: number;
-  prs_indexed: number;
-  commits_indexed: number;
-  total_newly_indexed: number;
-  incremental: boolean;
-}

@@ -4,7 +4,7 @@ import time
 
 from fastapi import HTTPException
 
-from config.settings import settings
+from config.settings import get_settings
 
 _call_timestamps: list[float] = []
 
@@ -15,6 +15,7 @@ def check_review_rate_limit() -> None:
     Per-process only (an in-memory list, not shared across workers/instances) — sufficient for
     a single-instance deployment; not a substitute for real distributed rate limiting at scale.
     """
+    settings = get_settings()
     now = time.monotonic()
     cutoff = now - settings.review_rate_limit_window_seconds
     _call_timestamps[:] = [t for t in _call_timestamps if t > cutoff]

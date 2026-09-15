@@ -6,7 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
-from config.settings import settings
+from config.settings import get_settings
 
 _ALLOW_METHODS = "GET, POST, OPTIONS"
 _ALLOW_HEADERS = "Content-Type, X-API-Key"
@@ -29,6 +29,7 @@ class AllowedOriginMiddleware(BaseHTTPMiddleware):
             # browser-enforced mechanism, so there's nothing to add or block here.
             return await call_next(request)
 
+        settings = get_settings()
         allowed = origin == settings.allowed_origin and settings.allowed_origin is not None
 
         if request.method == "OPTIONS":

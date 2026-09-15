@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException
 
+from api.allowlist import check_repo_allowed
 from api.models import ReviewRequest, ReviewResponse
-from core.review_service import review_pr
+
+if TYPE_CHECKING:
+    from core.review_service import ReviewResult
 
 router = APIRouter()
 
@@ -16,9 +21,17 @@ def _parse_repo(repo: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
+    """Lazily import core.review_service so it never joins api.main's module-scope imports."""
+    from core.review_service import review_pr as _review_pr
+
+    return await _review_pr(owner, repo, pr_number)
+
+
 @router.post("/review", response_model=ReviewResponse)
 async def review(request: ReviewRequest) -> ReviewResponse:
     """Review a pull request using historical repo context and OpenAI."""
     owner, name = _parse_repo(request.repo)
+    check_repo_allowed(owner, name)
     result = await review_pr(owner, name, request.pr_number)
     return ReviewResponse.model_validate(result)

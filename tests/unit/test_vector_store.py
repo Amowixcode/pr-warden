@@ -56,8 +56,9 @@ def test_build_chroma_collection_uses_settings_defaults():
     mock_client.get_or_create_collection.return_value = mock_collection
 
     with patch("chromadb.PersistentClient", return_value=mock_client) as mock_pc:
-        from config.settings import settings
+        from config.settings import get_settings
 
+        settings = get_settings()
         result = build_chroma_collection()
         mock_pc.assert_called_once_with(path=settings.chroma_persist_dir)
         mock_client.get_or_create_collection.assert_called_once_with(

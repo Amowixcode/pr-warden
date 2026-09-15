@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
 import { ApiError, getReviewHistory } from "../api/client";
-import type { ReviewHistoryItem } from "../api/types";
-import { VerdictBadge } from "./VerdictBadge";
+import type { ReviewHistoryItem, Verdict } from "../api/types";
+import { StatusTag } from "./StatusTag";
 
-export function HistoryList({ apiKey }: { apiKey: string }) {
+const VERDICT_LABEL: Record<Verdict, string> = {
+  APPROVE: "Approve",
+  REQUEST_CHANGES: "Request changes",
+  COMMENT: "Comment",
+};
+
+const VERDICT_DOT: Record<Verdict, "approve" | "request-changes" | "comment"> = {
+  APPROVE: "approve",
+  REQUEST_CHANGES: "request-changes",
+  COMMENT: "comment",
+};
+
+export function HistoryList() {
   const [items, setItems] = useState<ReviewHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -12,7 +24,7 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getReviewHistory(apiKey)
+    getReviewHistory()
       .then((data) => {
         if (!cancelled) setItems(data);
       })
@@ -27,7 +39,7 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, []);
 
   if (loading) {
     return (
@@ -43,7 +55,11 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
   }
 
   if (!items || items.length === 0) {
-    return <p className="api-key-note">No reviews yet.</p>;
+    return (
+      <p className="api-key-note">
+        No reviews yet. Ingest a repo and review a PR to get started.
+      </p>
+    );
   }
 
   return (
@@ -55,18 +71,30 @@ export function HistoryList({ apiKey }: { apiKey: string }) {
           <th>Verdict</th>
           <th>Summary</th>
           <th>Reviewed</th>
+          <th>GitHub</th>
         </tr>
       </thead>
       <tbody>
         {items.map((item) => (
           <tr key={item.id}>
             <td className="mono">{item.repo}</td>
-            <td className="mono">#{item.pr_number}</td>
+            <td className="mono">
+              <a href={`#/review/${item.id}`}>#{item.pr_number}</a>
+            </td>
             <td>
-              <VerdictBadge verdict={item.verdict} />
+              <StatusTag color={VERDICT_DOT[item.verdict]} label={VERDICT_LABEL[item.verdict]} />
             </td>
             <td>{item.summary}</td>
             <td>{new Date(item.created_at).toLocaleString()}</td>
+            <td>
+              <a
+                href={`https://github.com/${item.repo}/pull/${item.pr_number}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View PR ↗
+              </a>
+            </td>
           </tr>
         ))}
       </tbody>

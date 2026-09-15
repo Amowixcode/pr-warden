@@ -5,7 +5,27 @@
 Context-aware PR review CLI built with LangGraph multi-agent orchestration and RAG. Indexes a
 GitHub repo's history (issues, merged PRs, commits) into ChromaDB, then reviews pull requests
 with three specialist OpenAI-backed agents — security, quality, and test coverage — running in
-parallel and merged into one verdict.
+parallel and merged into one verdict. Available as a CLI (below) or as a hosted
+[web app](#web-app).
+
+![Completed review in the web app](docs/screenshots/review-verdict.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[GitHub repo<br/>issues, PRs, commits] -->|warden ingest| B[(ChromaDB<br/>vector store)]
+    B --> C[Retrieval<br/>PR context]
+    C --> D[Security agent]
+    C --> E[Quality agent]
+    C --> F[Test agent]
+    D --> G[Summarizer]
+    E --> G
+    F --> G
+    G --> H[Final Verdict]
+```
+
+See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
 
 ## Usage
 
@@ -46,8 +66,6 @@ warden doctor                          # run setup/health checks (GitHub token, 
    non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`) — this
    is enforced at merge time even if an individual agent's own verdict and issues list disagree.
 
-See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
-
 ## Output format
 
 `warden review` prints a **Final Verdict** section — the merged verdict, issues, and
@@ -70,6 +88,47 @@ agents can focus on what's new. If nothing has changed since the last review, no
 OpenAI calls) run at all; the cached verdict is returned directly. Pass `--full` to always do a
 complete review, ignoring history.
 
+## Web app
+
+A hosted web UI sits on top of the same review engine, for people who'd rather click than
+type CLI commands:
+
+- **App**: https://pr-warden.vercel.app
+- **API**: https://pr-warden.onrender.com — interactive docs at
+  [pr-warden.onrender.com/docs](https://pr-warden.onrender.com/docs)
+
+The frontend (`frontend/`, React + Vite) has no key-input field — visitors never enter or see
+a credential. It has four sections, each calling the API below:
+
+| Section | Does |
+|---|---|
+| Home | Shows a real, bundled review on load — no request, no key, nothing to configure |
+| Review | Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict |
+| PRs | Browse a repo's open pull requests and jump straight into reviewing one |
+| History | See past reviews pr-warden has run — click one for the full per-agent breakdown |
+
+Ingest isn't exposed in the UI at all — it's an operator action (`warden ingest`), not a
+visitor one, since it's the one operation with no natural rate limit on repo size.
+
+### API endpoints
+
+| Method | Path | Auth |
+|---|---|---|
+| `GET` | `/health` | none |
+| `GET` | `/health/deep` | API key, if `API_SHARED_KEY` is set |
+| `GET` | `/reviews` | none |
+| `GET` | `/reviews/{id}` | none |
+| `GET` | `/prs/{owner}/{repo}` | none |
+| `POST` | `/review` | API key (if set) + repo allowlist + per-review rate limit |
+| `POST` | `/ingest` | API key, if `API_SHARED_KEY` is set |
+
+The frontend's own `X-API-Key` value (`VITE_API_KEY`, set at Vercel build time) is **not a
+security boundary** — a single-page app has to send it, so it's visible in any browser's
+network tab. It only deters opportunistic scanners; the actual protection for `/review` is the
+repo allowlist (`REVIEW_ALLOWED_REPOS`). See [`DEPLOY.md`](DEPLOY.md) for the full public/
+protected breakdown, how the API (Render) and frontend (Vercel) are deployed and wired
+together, and the cost controls that back `/review`.
+
 ## Supabase setup (optional)
 
 Local JSON history (above) is all that's needed for the CLI's incremental caching. Supabase is
@@ -81,3 +140,20 @@ an optional, additive store on top of that, used to serve `GET /reviews` from th
 
 Without these two variables set, review/ingest still work exactly as before — Supabase writes
 are skipped, and `GET /reviews` returns `[]`.
+
+## Known Limitations
+
+Accepted for now and tracked as open issues rather than blockers:
+
+- The frontend's `X-API-Key` (`VITE_API_KEY`) is baked into the JS bundle at build time and
+  sent on every request — not a real security boundary, just a deterrent against opportunistic
+  scanners. Real protection for `/review` is the server-side repo allowlist
+  (`REVIEW_ALLOWED_REPOS`), documented in [`DEPLOY.md`](DEPLOY.md).
+- The rate limit on `/review` is per-process, in-memory state — fine for this single-instance
+  deployment, but it resets on restart and isn't shared across replicas. The actual bound on
+  OpenAI spend is a hard monthly cap set on the OpenAI project itself, outside this repo.
+- The API runs on Render's free tier, which spins down after inactivity — the first request
+  after idle time is slower than the rest.
+- Review/ingest history is local JSON plus an optional Supabase mirror; there's no
+  multi-tenant or per-user isolation.
+- OpenAI is the only supported LLM/embedding provider.

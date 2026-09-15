@@ -65,6 +65,10 @@ class HealthResponse(BaseModel):
     all_passed: bool
 
 
+class LivenessResponse(BaseModel):
+    status: str = "ok"
+
+
 class OpenPRResponse(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -83,4 +87,21 @@ class ReviewHistoryItem(BaseModel):
     summary: str
     issues: list[str]
     suggestions: list[str]
+    created_at: datetime
+
+
+class ReviewDetailResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    repo: str
+    pr_number: int
+    head_sha: str
+    verdict: str
+    summary: str
+    issues: list[str]
+    suggestions: list[str]
+    security_result: AgentResultModel | None = None
+    quality_result: AgentResultModel | None = None
+    test_result: AgentResultModel | None = None
     created_at: datetime
