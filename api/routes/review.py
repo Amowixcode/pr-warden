@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 
+from api.allowlist import check_repo_allowed
 from api.models import ReviewRequest, ReviewResponse
 
 if TYPE_CHECKING:
@@ -31,5 +32,6 @@ async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
 async def review(request: ReviewRequest) -> ReviewResponse:
     """Review a pull request using historical repo context and OpenAI."""
     owner, name = _parse_repo(request.repo)
+    check_repo_allowed(owner, name)
     result = await review_pr(owner, name, request.pr_number)
     return ReviewResponse.model_validate(result)

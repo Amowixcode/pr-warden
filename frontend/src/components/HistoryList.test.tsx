@@ -23,7 +23,7 @@ describe("HistoryList", () => {
       },
     ]);
 
-    render(<HistoryList apiKey="k" />);
+    render(<HistoryList />);
 
     const link = await screen.findByRole("link", { name: "#7" });
     expect(link).toHaveAttribute("href", "#/review/42");
@@ -44,7 +44,7 @@ describe("HistoryList", () => {
       },
     ]);
 
-    render(<HistoryList apiKey="k" />);
+    render(<HistoryList />);
 
     const githubLink = await screen.findByRole("link", { name: /View PR/ });
     expect(githubLink).toHaveAttribute("href", "https://github.com/octocat/Hello-World/pull/7");
@@ -65,7 +65,7 @@ describe("HistoryList", () => {
       },
     ]);
 
-    render(<HistoryList apiKey="k" />);
+    render(<HistoryList />);
 
     const badge = await screen.findByText("Request changes");
     expect(badge.closest(".tag")).toBeInTheDocument();

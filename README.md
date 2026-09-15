@@ -97,14 +97,18 @@ type CLI commands:
 - **API**: https://pr-warden.onrender.com — interactive docs at
   [pr-warden.onrender.com/docs](https://pr-warden.onrender.com/docs)
 
-The frontend (`frontend/`, React + Vite) has four tabs, each calling the API below:
+The frontend (`frontend/`, React + Vite) has no key-input field — visitors never enter or see
+a credential. It has four sections, each calling the API below:
 
-| Tab | Does |
+| Section | Does |
 |---|---|
-| Ingest | Index a GitHub repo's issues, commits, and merged PRs so pr-warden has context for reviews |
+| Home | Shows a real, bundled review on load — no request, no key, nothing to configure |
 | Review | Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict |
-| History | See past reviews pr-warden has run, with their verdicts and summaries |
 | PRs | Browse a repo's open pull requests and jump straight into reviewing one |
+| History | See past reviews pr-warden has run — click one for the full per-agent breakdown |
+
+Ingest isn't exposed in the UI at all — it's an operator action (`warden ingest`), not a
+visitor one, since it's the one operation with no natural rate limit on repo size.
 
 ### API endpoints
 
@@ -112,13 +116,18 @@ The frontend (`frontend/`, React + Vite) has four tabs, each calling the API bel
 |---|---|---|
 | `GET` | `/health` | none |
 | `GET` | `/health/deep` | API key, if `API_SHARED_KEY` is set |
-| `POST` | `/ingest` | API key |
-| `POST` | `/review` | API key + per-review rate limit |
-| `GET` | `/reviews` | API key |
-| `GET` | `/prs/{owner}/{repo}` | API key |
+| `GET` | `/reviews` | none |
+| `GET` | `/reviews/{id}` | none |
+| `GET` | `/prs/{owner}/{repo}` | none |
+| `POST` | `/review` | API key (if set) + repo allowlist + per-review rate limit |
+| `POST` | `/ingest` | API key, if `API_SHARED_KEY` is set |
 
-See [`DEPLOY.md`](DEPLOY.md) for how the API (Render) and frontend (Vercel) are deployed and
-wired together, including the two-pass deploy order.
+The frontend's own `X-API-Key` value (`VITE_API_KEY`, set at Vercel build time) is **not a
+security boundary** — a single-page app has to send it, so it's visible in any browser's
+network tab. It only deters opportunistic scanners; the actual protection for `/review` is the
+repo allowlist (`REVIEW_ALLOWED_REPOS`). See [`DEPLOY.md`](DEPLOY.md) for the full public/
+protected breakdown, how the API (Render) and frontend (Vercel) are deployed and wired
+together, and the cost controls that back `/review`.
 
 ## Supabase setup (optional)
 
@@ -136,14 +145,13 @@ are skipped, and `GET /reviews` returns `[]`.
 
 Accepted for now and tracked as open issues rather than blockers:
 
-- The web app's demo API key is entered client-side and stored in the browser's
-  `localStorage` — a convenience for demoing, not real access control
-  ([#112](https://github.com/Amowixcode/pr-warden/issues/112)).
-- There's no hard spending cap on OpenAI usage, only a per-review rate limit
-  ([#92](https://github.com/Amowixcode/pr-warden/issues/92)).
-- The web UI has rough edges: no landing/home view, the PR list doesn't lead anywhere useful
-  yet, and past reviews in History aren't directly reopenable
-  ([#111](https://github.com/Amowixcode/pr-warden/issues/111)).
+- The frontend's `X-API-Key` (`VITE_API_KEY`) is baked into the JS bundle at build time and
+  sent on every request — not a real security boundary, just a deterrent against opportunistic
+  scanners. Real protection for `/review` is the server-side repo allowlist
+  (`REVIEW_ALLOWED_REPOS`), documented in [`DEPLOY.md`](DEPLOY.md).
+- The rate limit on `/review` is per-process, in-memory state — fine for this single-instance
+  deployment, but it resets on restart and isn't shared across replicas. The actual bound on
+  OpenAI spend is a hard monthly cap set on the OpenAI project itself, outside this repo.
 - The API runs on Render's free tier, which spins down after inactivity — the first request
   after idle time is slower than the rest.
 - Review/ingest history is local JSON plus an optional Supabase mirror; there's no

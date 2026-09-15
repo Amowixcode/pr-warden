@@ -16,7 +16,7 @@ describe("OpenPrsList", () => {
     const onReview = vi.fn();
     const user = userEvent.setup();
 
-    render(<OpenPrsList apiKey="k" onReview={onReview} />);
+    render(<OpenPrsList onReview={onReview} />);
 
     await user.type(screen.getByLabelText("Repository"), "octocat/Hello-World");
     await user.click(screen.getByRole("button", { name: "List open PRs" }));

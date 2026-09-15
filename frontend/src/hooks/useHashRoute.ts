@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Route =
   | { view: "home" }
-  | { view: "section"; section: "ingest" | "history" | "prs" }
+  | { view: "section"; section: "history" | "prs" }
   | { view: "review-form"; prefillRepo?: string; prefillPr?: number }
   | { view: "review-detail"; id: number };
 
@@ -40,7 +40,7 @@ export function parseHash(hash: string): Route {
     return { view: "review-form", prefillRepo, prefillPr };
   }
 
-  if (segments[0] === "ingest" || segments[0] === "history" || segments[0] === "prs") {
+  if (segments[0] === "history" || segments[0] === "prs") {
     return { view: "section", section: segments[0] };
   }
 

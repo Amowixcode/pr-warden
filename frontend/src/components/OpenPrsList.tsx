@@ -5,10 +5,8 @@ import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
 import { LoadingBanner } from "./LoadingBanner";
 
 export function OpenPrsList({
-  apiKey,
   onReview,
 }: {
-  apiKey: string;
   onReview: (repo: string, prNumber: number) => void;
 }) {
   const [repo, setRepo] = useState("");
@@ -28,7 +26,7 @@ export function OpenPrsList({
     setError(null);
     setPrs(null);
     try {
-      const data = await run(() => listOpenPrs(parts[0], parts[1], apiKey));
+      const data = await run(() => listOpenPrs(parts[0], parts[1]));
       setPrs(data);
       setSubmittedRepo(`${parts[0]}/${parts[1]}`);
     } catch (err) {

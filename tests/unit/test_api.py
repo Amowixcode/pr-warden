@@ -121,6 +121,17 @@ def test_ingest_endpoint_invalid_repo_format() -> None:
     assert "owner/repo" in response.json()["detail"]
 
 
+def test_ingest_endpoint_requires_api_key_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/ingest stays protected — it's the expensive operation, an operator action."""
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+
+    response = client.post("/ingest", json={"repo": "octocat/Hello-World"})
+
+    assert response.status_code == 401
+
+
 def test_reviews_endpoint_returns_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("api.routes.history.list_reviews", lambda: [])
 
@@ -259,29 +270,12 @@ def test_invalid_settings_returns_handled_500(monkeypatch: pytest.MonkeyPatch) -
         settings_module.get_settings.cache_clear()
 
 
-def test_reviews_endpoint_requires_api_key_when_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
-
-    response = client.get("/reviews")
-
-    assert response.status_code == 401
-
-
-def test_reviews_endpoint_rejects_wrong_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
-
-    response = client.get("/reviews", headers={"X-API-Key": "wrong"})
-
-    assert response.status_code == 401
-
-
-def test_reviews_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reviews_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /reviews is public — the home screen and history view read it with no key."""
     monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
     monkeypatch.setattr("api.routes.history.list_reviews", lambda: [])
 
-    response = client.get("/reviews", headers={"X-API-Key": "s3cr3t"})
+    response = client.get("/reviews")
 
     assert response.status_code == 200
 
@@ -312,6 +306,38 @@ def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.Monk
     )
 
     assert response.status_code == 401
+
+
+# ── Repo allowlist ───────────────────────────────────────────────────────────
+
+
+def test_review_endpoint_rejects_repo_outside_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "review_allowed_repos", "octocat/Hello-World")
+
+    response = client.post("/review", json={"repo": "evil/other-repo", "pr_number": 7})
+
+    assert response.status_code == 403
+    assert "allowlist" in response.json()["detail"]
+
+
+def test_review_endpoint_allows_repo_in_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "review_allowed_repos", "octocat/Hello-World")
+    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+
+    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+
+    assert response.status_code == 200
+
+
+def test_review_endpoint_no_allowlist_configured_allows_any_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "review_allowed_repos", None)
+    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+
+    response = client.post("/review", json={"repo": "anyone/anything", "pr_number": 7})
+
+    assert response.status_code == 200
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
@@ -423,19 +449,12 @@ def test_prs_endpoint_no_open_prs_returns_empty_list(monkeypatch: pytest.MonkeyP
     assert response.json() == []
 
 
-def test_prs_endpoint_requires_api_key_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
-
-    response = client.get("/prs/octocat/Hello-World")
-
-    assert response.status_code == 401
-
-
-def test_prs_endpoint_accepts_correct_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prs_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /prs is public — the open-PR list is read-only and cheap."""
     monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
     monkeypatch.setattr("api.routes.prs.list_open_prs", AsyncMock(return_value=[]))
 
-    response = client.get("/prs/octocat/Hello-World", headers={"X-API-Key": "s3cr3t"})
+    response = client.get("/prs/octocat/Hello-World")
 
     assert response.status_code == 200
 

@@ -1,12 +1,12 @@
-import type {
-  IngestResponse,
-  OpenPRResponse,
-  ReviewDetail,
-  ReviewHistoryItem,
-  ReviewResponse,
-} from "./types";
+import type { OpenPRResponse, ReviewDetail, ReviewHistoryItem, ReviewResponse } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
+// An operator-configured value baked into the build, not something a visitor enters — see
+// DEPLOY.md's note that this is not a security boundary (it's visible in the network tab of
+// any browser running this bundle). It only deters opportunistic scanners; real protection
+// for /review is the server-side repo allowlist.
+const API_KEY = import.meta.env.VITE_API_KEY ?? "";
 
 export class ApiError extends Error {
   status: number;
@@ -17,15 +17,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit,
-  apiKey: string,
-): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-  if (apiKey) {
-    headers.set("X-API-Key", apiKey);
+  if (API_KEY) {
+    headers.set("X-API-Key", API_KEY);
   }
 
   const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
@@ -46,48 +42,30 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-export function reviewPr(
-  repo: string,
-  prNumber: number,
-  apiKey: string,
-): Promise<ReviewResponse> {
-  return request<ReviewResponse>(
-    "/review",
-    { method: "POST", body: JSON.stringify({ repo, pr_number: prNumber }) },
-    apiKey,
-  );
+export function reviewPr(repo: string, prNumber: number): Promise<ReviewResponse> {
+  return request<ReviewResponse>("/review", {
+    method: "POST",
+    body: JSON.stringify({ repo, pr_number: prNumber }),
+  });
 }
 
-export function listOpenPrs(
-  owner: string,
-  repo: string,
-  apiKey: string,
-): Promise<OpenPRResponse[]> {
+export function listOpenPrs(owner: string, repo: string): Promise<OpenPRResponse[]> {
   return request<OpenPRResponse[]>(
     `/prs/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
     { method: "GET" },
-    apiKey,
   );
 }
 
-export function getReviewHistory(apiKey: string): Promise<ReviewHistoryItem[]> {
-  return request<ReviewHistoryItem[]>("/reviews", { method: "GET" }, apiKey);
+export function getReviewHistory(): Promise<ReviewHistoryItem[]> {
+  return request<ReviewHistoryItem[]>("/reviews", { method: "GET" });
 }
 
-export function ingestRepository(repo: string, apiKey: string): Promise<IngestResponse> {
-  return request<IngestResponse>(
-    "/ingest",
-    { method: "POST", body: JSON.stringify({ repo }) },
-    apiKey,
-  );
-}
-
-/** GET /health — no API key needed. Used to tell "server is cold" from "request in flight". */
+/** GET /health — used to tell "server is cold" from "request in flight". */
 export function getHealth(): Promise<{ status: string }> {
-  return request<{ status: string }>("/health", { method: "GET" }, "");
+  return request<{ status: string }>("/health", { method: "GET" });
 }
 
-/** GET /reviews/{id} — no API key needed; a single full review, including per-agent detail. */
-export function getReviewDetail(id: number, apiKey: string): Promise<ReviewDetail> {
-  return request<ReviewDetail>(`/reviews/${id}`, { method: "GET" }, apiKey);
+/** GET /reviews/{id} — a single full review, including per-agent detail. */
+export function getReviewDetail(id: number): Promise<ReviewDetail> {
+  return request<ReviewDetail>(`/reviews/${id}`, { method: "GET" });
 }
