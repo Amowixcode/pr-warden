@@ -68,7 +68,22 @@ def test_review_endpoint_returns_review_result(monkeypatch: pytest.MonkeyPatch) 
     assert data["pr_number"] == 7
     assert data["suggestions"] == ["Add tests"]
     assert data["security_result"]["verdict"] == "APPROVE"
-    mock.assert_awaited_once_with("octocat", "Hello-World", 7)
+    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=False)
+
+
+def test_review_endpoint_full_flag_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The only way the web UI can force a fresh review of a PR showing a stale cached verdict —
+    see issue #124.
+    """
+    mock = _review_result_mock()
+    monkeypatch.setattr("api.routes.review.review_pr", mock)
+
+    response = client.post(
+        "/review", json={"repo": "octocat/Hello-World", "pr_number": 7, "full": True}
+    )
+
+    assert response.status_code == 200
+    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=True)
 
 
 def test_review_endpoint_invalid_repo_format() -> None:

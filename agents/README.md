@@ -41,9 +41,14 @@ agent node has an edge into `summarizer`, which only executes once all three hav
 
 `agents/summarizer.py::summarizer` implements this rule:
 
-- `verdict` = `"REQUEST_CHANGES"` if **any** agent's verdict is `"REQUEST_CHANGES"`
-- else `"COMMENT"` if **any** agent's verdict is `"COMMENT"`
-- else `"APPROVE"` (only when all three agents approved)
+- `verdict` = `"REQUEST_CHANGES"` if **any** agent's verdict is `"REQUEST_CHANGES"` **and the
+  merged issues list is non-empty** — an agent can set REQUEST_CHANGES before evidence
+  verification strips every issue it reported, so an empty issues list degrades this to
+  `"COMMENT"` instead of being trusted as-is
+- else `"COMMENT"` if **any** agent's verdict is `"COMMENT"`, or if the merged issues list is
+  non-empty even though every agent said `"APPROVE"` (the symmetric guard: a non-empty issues
+  list can never carry an `APPROVE` verdict either)
+- else `"APPROVE"` (only when all three agents approved and there are no issues)
 - `issues` = all three agents' `issues` lists combined, capped to the first 5 total
 - `suggestions` = all three agents' `suggestions` lists combined, capped to the first 3 total
 - `summary` = a synthesized one-liner (e.g. `"REQUEST_CHANGES — 2 issues flagged by security,

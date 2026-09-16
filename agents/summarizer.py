@@ -16,10 +16,14 @@ def _merge_verdict(verdicts: list[Verdict], has_issues: bool) -> Verdict:
     always internally consistent (an agent can return APPROVE while still listing issues), so
     this is enforced as a safety net at merge time rather than trusted from each agent.
 
+    Symmetrically, REQUEST_CHANGES requires at least one surviving issue: an agent can also set
+    that verdict before evidence verification strips every issue it reported, so REQUEST_CHANGES
+    with an empty merged issues list degrades to COMMENT rather than being trusted as-is.
+
     Else (all APPROVE, no issues) -> APPROVE.
     """
     if "REQUEST_CHANGES" in verdicts:
-        return "REQUEST_CHANGES"
+        return "REQUEST_CHANGES" if has_issues else "COMMENT"
     if "COMMENT" in verdicts or has_issues:
         return "COMMENT"
     return "APPROVE"
@@ -42,6 +46,8 @@ def _synthesize_summary(verdict: Verdict, flagged_by: list[str], total_issues: i
     """A short synthesized sentence — never a concatenation of each agent's own summary."""
     if verdict == "APPROVE":
         return "No blocking concerns from security, quality, or test coverage review."
+    if total_issues == 0:
+        return f"{verdict} — no findings survived evidence verification."
     issue_word = "issue" if total_issues == 1 else "issues"
     return f"{verdict} — {total_issues} {issue_word} flagged by {', '.join(flagged_by)}."
 

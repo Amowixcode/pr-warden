@@ -14,6 +14,7 @@ export function VerdictCard({
   agentResults,
   tags = [],
   headMeta,
+  onRerun,
 }: {
   repo: string;
   prNumber: number;
@@ -23,6 +24,7 @@ export function VerdictCard({
   agentResults: { security: AgentResult; quality: AgentResult; test: AgentResult };
   tags?: { color: DotColor; label: string }[];
   headMeta?: string;
+  onRerun?: () => void;
 }) {
   const attributed = attributeFindings(issues, agentResults);
   const totalPerAgent =
@@ -43,6 +45,11 @@ export function VerdictCard({
         {tags.map((tag) => (
           <StatusTag key={tag.label} color={tag.color} label={tag.label} />
         ))}
+        {onRerun && (
+          <button type="button" className="rerun-btn" onClick={onRerun}>
+            Re-run
+          </button>
+        )}
         {headMeta && <span className="head-meta">{headMeta}</span>}
       </div>
       <div className="card-body">

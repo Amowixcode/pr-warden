@@ -21,17 +21,21 @@ def _parse_repo(repo: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-async def review_pr(owner: str, repo: str, pr_number: int) -> ReviewResult:
+async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -> ReviewResult:
     """Lazily import core.review_service so it never joins api.main's module-scope imports."""
     from core.review_service import review_pr as _review_pr
 
-    return await _review_pr(owner, repo, pr_number)
+    return await _review_pr(owner, repo, pr_number, full=full)
 
 
 @router.post("/review", response_model=ReviewResponse)
 async def review(request: ReviewRequest) -> ReviewResponse:
-    """Review a pull request using historical repo context and OpenAI."""
+    """Review a pull request using historical repo context and OpenAI.
+
+    `full=True` bypasses the incremental/cached review history — the only way the web UI can
+    force a fresh review of a PR that's currently showing a stale cached verdict.
+    """
     owner, name = _parse_repo(request.repo)
     check_repo_allowed(owner, name)
-    result = await review_pr(owner, name, request.pr_number)
+    result = await review_pr(owner, name, request.pr_number, full=request.full)
     return ReviewResponse.model_validate(result)

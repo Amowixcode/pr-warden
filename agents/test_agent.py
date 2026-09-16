@@ -165,14 +165,20 @@ def _parse_response(text: str, diff: str) -> AgentResult:
     """Parse OpenAI response text into an AgentResult, stripping code fences if present.
 
     Each issue's evidence is mechanically verified against diff before being kept — see
-    _verify_issues.
+    _verify_issues. If every issue gets dropped, a REQUEST_CHANGES verdict is downgraded to
+    COMMENT — the model set that verdict before verification ran, so it can't be trusted once
+    the issues backing it are gone.
     """
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data = json.loads(text)
+    verdict = data["verdict"]
+    issues = _verify_issues(data.get("issues", []), diff)
+    if verdict == "REQUEST_CHANGES" and not issues:
+        verdict = "COMMENT"
     return AgentResult(
         summary=data["summary"],
-        verdict=data["verdict"],
-        issues=_verify_issues(data.get("issues", []), diff),
+        verdict=verdict,
+        issues=issues,
         suggestions=data.get("suggestions", []),
     )
 

@@ -351,6 +351,26 @@ def test_parse_response_drops_issue_with_fabricated_evidence() -> None:
     assert result.issues == []
 
 
+def test_parse_response_downgrades_verdict_when_all_issues_fail_verification() -> None:
+    """Regression test for issue #124: the model sets REQUEST_CHANGES before evidence
+    verification runs, so a REQUEST_CHANGES verdict backed only by fabricated evidence must be
+    downgraded to COMMENT once every issue is dropped — never surfaced with an empty issues list.
+    """
+    raw = json.dumps(
+        {
+            "summary": "Found a problem.",
+            "verdict": "REQUEST_CHANGES",
+            "issues": [
+                {"issue": "Hardcoded API key in config.py line 12", "evidence": "not in the diff"}
+            ],
+            "suggestions": [],
+        }
+    )
+    result = _parse_response(raw, _DEFAULT_DIFF)
+    assert result.verdict == "COMMENT"
+    assert result.issues == []
+
+
 def test_parse_response_keeps_issue_with_verified_evidence() -> None:
     result = _parse_response(_VALID_JSON, _DEFAULT_DIFF)
     assert result.issues == ["Hardcoded API key in config.py line 12"]
