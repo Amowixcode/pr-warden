@@ -2,7 +2,15 @@ import type { ReviewResponse } from "../api/types";
 import { AgentTabs } from "./AgentTabs";
 import { VerdictCard } from "./VerdictCard";
 
-export function ReviewResults({ result, repo }: { result: ReviewResponse; repo: string }) {
+export function ReviewResults({
+  result,
+  repo,
+  onRerun,
+}: {
+  result: ReviewResponse;
+  repo: string;
+  onRerun?: () => void;
+}) {
   const tags = [];
   if (result.cached) {
     tags.push({ color: "ok" as const, label: "cached" });
@@ -24,6 +32,7 @@ export function ReviewResults({ result, repo }: { result: ReviewResponse; repo: 
           test: result.test_result,
         }}
         tags={tags}
+        onRerun={result.cached ? onRerun : undefined}
       />
       {result.cached && (
         <p className="api-key-note">

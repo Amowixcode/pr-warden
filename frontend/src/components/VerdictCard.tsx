@@ -18,6 +18,7 @@ export function VerdictCard({
   tags = [],
   headMeta,
   showMoreToggle = false,
+  onRerun,
 }: {
   repo: string;
   prNumber: number;
@@ -28,6 +29,7 @@ export function VerdictCard({
   tags?: { color: DotColor; label: string }[];
   headMeta?: string;
   showMoreToggle?: boolean;
+  onRerun?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const attributed = attributeFindings(issues, agentResults);
@@ -52,6 +54,11 @@ export function VerdictCard({
         {tags.map((tag) => (
           <StatusTag key={tag.label} color={tag.color} label={tag.label} />
         ))}
+        {onRerun && (
+          <button type="button" className="rerun-btn" onClick={onRerun}>
+            Re-run
+          </button>
+        )}
         {headMeta && <span className="head-meta">{headMeta}</span>}
       </div>
       <div className="card-body">

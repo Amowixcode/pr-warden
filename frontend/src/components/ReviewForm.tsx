@@ -33,6 +33,17 @@ export function ReviewForm({
     }
   }
 
+  async function handleRerun() {
+    if (!result || !submittedRepo) return;
+    setError(null);
+    try {
+      const data = await run(() => reviewPr(submittedRepo, result.pr_number, true));
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    }
+  }
+
   return (
     <div>
       <form className="card" onSubmit={handleSubmit}>
@@ -69,7 +80,9 @@ export function ReviewForm({
 
       {error && <div className="error-banner">{error}</div>}
 
-      {result && submittedRepo && !loading && <ReviewResults result={result} repo={submittedRepo} />}
+      {result && submittedRepo && !loading && (
+        <ReviewResults result={result} repo={submittedRepo} onRerun={handleRerun} />
+      )}
     </div>
   );
 }
