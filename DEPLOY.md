@@ -8,7 +8,7 @@
 | `OPENAI_API_KEY` | yes | OpenAI access for the review agents |
 | `SUPABASE_URL` | no | Supabase project URL — enables `GET /reviews` and history writes |
 | `SUPABASE_KEY` | no | Supabase service/anon key, paired with `SUPABASE_URL` |
-| `API_SHARED_KEY` | no | Shared secret required as the `X-API-Key` header on `/review`, `/ingest`, and `/health/deep`. `/health`, `/reviews`, and `/prs` are always unauthenticated — see [Public vs. protected endpoints](#public-vs-protected-endpoints) below. Unset = no auth on any endpoint (local dev default) |
+| `API_SHARED_KEY` | no | Shared secret required as the `X-API-Key` header on `/review` and `/health/deep`. `/health`, `/reviews`, `/prs`, and `/ingest` are always unauthenticated — see [Public vs. protected endpoints](#public-vs-protected-endpoints) below. Unset = no auth on any endpoint (local dev default) |
 | `REVIEW_ALLOWED_REPOS` | no | Comma-separated `owner/repo` list. When set, `POST /review` rejects any other repo with `403`. Unset = any repo is reviewable (by anyone who has `API_SHARED_KEY`, or by anyone at all if that's also unset) |
 | `ALLOWED_ORIGIN` | no | The deployed frontend's origin (e.g. `https://your-app.vercel.app`) allowed to call the API cross-origin. Unset = no origin is allowed (fail-closed, not a wildcard) |
 | `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window before `429`. Default `20` |
@@ -40,7 +40,7 @@ and `/health` don't need one at all; `/review` needs `VITE_API_KEY` to match the
 | `GET /reviews/{id}` | none | One full review, including per-agent findings |
 | `GET /prs/{owner}/{repo}` | none | Read-only, cheap |
 | `POST /review` | `X-API-Key` if `API_SHARED_KEY` set | Also checks `REVIEW_ALLOWED_REPOS` and the rate limit below — the one endpoint that spends OpenAI budget |
-| `POST /ingest` | `X-API-Key` if `API_SHARED_KEY` set | Not exposed in the web UI at all — an operator action via `warden ingest`, not a visitor one |
+| `POST /ingest` | none | Exposed in the web UI's Ingest section, and also usable via `warden ingest` |
 | `GET /health/deep` | `X-API-Key` if `API_SHARED_KEY` set | Reveals whether GitHub/OpenAI credentials are valid |
 
 ## Deploy via Blueprint (recommended)
@@ -103,7 +103,6 @@ protection:
    ```bash
    curl -X POST https://<your-service>.onrender.com/ingest \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: <API_SHARED_KEY, if set>" \
      -d '{"repo": "octocat/Hello-World"}'
    ```
 3. **Restart-survival check**: in the Render dashboard, manually restart the service. Once it's

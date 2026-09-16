@@ -101,7 +101,7 @@ app.include_router(
     review_router,
     dependencies=[Depends(require_api_key), Depends(check_review_rate_limit)],
 )
-app.include_router(ingest_router, dependencies=[Depends(require_api_key)])
+app.include_router(ingest_router)
 app.include_router(history_router)
 app.include_router(prs_router)
 app.include_router(health_router)

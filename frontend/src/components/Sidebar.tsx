@@ -1,11 +1,20 @@
-import { GitPullRequest, History as HistoryIcon, Home, List, Moon, Sun } from "lucide-react";
+import {
+  Database,
+  GitPullRequest,
+  History as HistoryIcon,
+  Home,
+  List,
+  Moon,
+  Sun,
+} from "lucide-react";
 import type { Theme } from "../hooks/useTheme";
 import { StackedLogo } from "./StackedLogo";
 
-export type Section = "home" | "review" | "history" | "prs";
+export type Section = "home" | "review" | "history" | "prs" | "ingest";
 
 const ITEMS: { id: Section; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
+  { id: "ingest", label: "Ingest a repo", icon: Database },
   { id: "review", label: "Review a PR", icon: GitPullRequest },
   { id: "prs", label: "Open PRs", icon: List },
   { id: "history", label: "History", icon: HistoryIcon },

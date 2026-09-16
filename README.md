@@ -98,7 +98,7 @@ type CLI commands:
   [pr-warden.onrender.com/docs](https://pr-warden.onrender.com/docs)
 
 The frontend (`frontend/`, React + Vite) has no key-input field — visitors never enter or see
-a credential. It has four sections, each calling the API below:
+a credential. It has five sections, each calling the API below:
 
 | Section | Does |
 |---|---|
@@ -106,9 +106,7 @@ a credential. It has four sections, each calling the API below:
 | Review | Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict |
 | PRs | Browse a repo's open pull requests and jump straight into reviewing one |
 | History | See past reviews pr-warden has run — click one for the full per-agent breakdown |
-
-Ingest isn't exposed in the UI at all — it's an operator action (`warden ingest`), not a
-visitor one, since it's the one operation with no natural rate limit on repo size.
+| Ingest | Index a repo's issues, commits, and merged PRs into the vector store |
 
 ### API endpoints
 
@@ -120,7 +118,7 @@ visitor one, since it's the one operation with no natural rate limit on repo siz
 | `GET` | `/reviews/{id}` | none |
 | `GET` | `/prs/{owner}/{repo}` | none |
 | `POST` | `/review` | API key (if set) + repo allowlist + per-review rate limit |
-| `POST` | `/ingest` | API key, if `API_SHARED_KEY` is set |
+| `POST` | `/ingest` | none |
 
 The frontend's own `X-API-Key` value (`VITE_API_KEY`, set at Vercel build time) is **not a
 security boundary** — a single-page app has to send it, so it's visible in any browser's
