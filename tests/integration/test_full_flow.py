@@ -303,8 +303,15 @@ def test_ingest_then_review_full_flow(
         },
     )
 
+    # The mocked security response is replayed verbatim (the mock server routes by system-prompt
+    # marker, not call order — see the module docstring), still claiming the original
+    # hardcoded-token finding. Its evidence isn't a substring of this narrower incremental diff,
+    # so verification correctly drops it — proving the fix for issue #124 end to end: a stale
+    # REQUEST_CHANGES verdict with no surviving issues degrades to COMMENT rather than exiting 1
+    # with nothing for the user to act on.
     second_review_result = runner.invoke(app, ["review", "acme/widgets", "7"])
-    assert second_review_result.exit_code == 1, second_review_result.output
+    assert second_review_result.exit_code == 0, second_review_result.output
+    assert "COMMENT" in second_review_result.output
     assert "Incremental review" in second_review_result.output
 
     new_prompts = [req["input"] for req in openai_api.responses_requests[3:]]

@@ -63,8 +63,10 @@ warden doctor                          # run setup/health checks (GitHub token, 
    self-check instruction misses.
 3. A summarizer merges the three findings into one final verdict: `REQUEST_CHANGES` if any agent
    flagged an issue, else `COMMENT` if any agent had a non-blocking issue, else `APPROVE`. A
-   non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`) — this
-   is enforced at merge time even if an individual agent's own verdict and issues list disagree.
+   non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`), and
+   symmetrically a `REQUEST_CHANGES` verdict requires at least one surviving issue — if evidence
+   verification strips every issue an agent reported, it degrades to `COMMENT` instead. Both are
+   enforced at merge time even if an individual agent's own verdict and issues list disagree.
 
 ## Output format
 

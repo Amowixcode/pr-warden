@@ -48,10 +48,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function reviewPr(repo: string, prNumber: number): Promise<ReviewResponse> {
+export function reviewPr(
+  repo: string,
+  prNumber: number,
+  full = false,
+): Promise<ReviewResponse> {
   return request<ReviewResponse>("/review", {
     method: "POST",
-    body: JSON.stringify({ repo, pr_number: prNumber }),
+    body: JSON.stringify({ repo, pr_number: prNumber, full }),
   });
 }
 

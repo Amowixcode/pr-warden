@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class ReviewRequest(BaseModel):
     repo: str
     pr_number: int
+    full: bool = False
 
 
 class IngestRequest(BaseModel):
