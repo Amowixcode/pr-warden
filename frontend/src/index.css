@@ -357,23 +357,6 @@ a {
   background: hsl(var(--success));
 }
 
-/* ---------------- intro ---------------- */
-.intro {
-  margin-bottom: 20px;
-}
-
-.intro h1 {
-  font-size: 19px;
-  margin-bottom: 4px;
-}
-
-.intro p {
-  margin: 0;
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
-  max-width: 68ch;
-}
-
 /* ---------------- verdict card ---------------- */
 .card.verdict-card {
   padding: 0;
@@ -506,7 +489,6 @@ a {
   flex-wrap: wrap;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  margin-top: 10px;
   overflow: hidden;
   background: hsl(var(--card));
 }
@@ -514,16 +496,16 @@ a {
 .strip-lead {
   display: flex;
   align-items: center;
-  padding: 10px 14px;
-  font-size: 12px;
+  padding: 16px 24px;
+  font-size: 13px;
   color: hsl(var(--muted-foreground));
   border-right: 1px solid hsl(var(--border));
 }
 
 .stat {
   flex: 1;
-  min-width: 104px;
-  padding: 9px 16px;
+  min-width: 112px;
+  padding: 16px 24px;
   border-right: 1px solid hsl(var(--border));
 }
 
@@ -534,7 +516,7 @@ a {
 .stat b {
   display: block;
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 500;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -645,8 +627,8 @@ h2.label {
 
 .step {
   flex: 1;
-  min-width: 148px;
-  padding: 12px 14px;
+  min-width: 150px;
+  padding: 16px 24px;
   border-right: 1px solid hsl(var(--border));
 }
 
@@ -656,9 +638,9 @@ h2.label {
 
 .step-cmd {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 12.5px;
   color: hsl(var(--primary));
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   word-break: break-all;
 }
 
@@ -669,19 +651,170 @@ h2.label {
 
 /* ---------------- secondary actions ---------------- */
 .secondary {
-  margin-top: 28px;
-  padding-top: 16px;
+  padding-top: 24px;
   border-top: 1px solid hsl(var(--border));
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.secondary p {
+/* ---------------- home screen: the one page that reads like a landing page ---------------- */
+.main-content.home {
+  padding: 72px 48px 96px;
+  max-width: 980px;
+}
+
+.regions {
+  display: flex;
+  flex-direction: column;
+  gap: 88px;
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+  margin-bottom: 16px;
+}
+
+.hero h1 {
+  font-size: clamp(30px, 4.4vw, 42px);
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  max-width: 18ch;
+  margin: 0 0 24px;
+}
+
+.lede {
   margin: 0;
-  font-size: 12px;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  max-width: 58ch;
+}
+
+.sec-head {
+  margin-bottom: 32px;
+}
+
+.sec-head h2 {
+  font-size: 23px;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  margin: 0 0 8px;
+}
+
+.sec-head p {
+  margin: 0;
+  font-size: 14.5px;
+  color: hsl(var(--muted-foreground));
+  max-width: 62ch;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 48px 32px;
+}
+
+.col h3 {
+  font-size: 15.5px;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+
+.col p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+
+.main-content.home .card-head {
+  padding: 12px 24px;
+}
+
+.main-content.home .card-body {
+  padding: 24px;
+}
+
+.main-content.home .summary {
+  font-size: 15px;
+}
+
+.main-content.home .count {
+  margin: 8px 0 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: hsl(var(--subtle-foreground));
+}
+
+.main-content.home .findings {
+  gap: 12px;
+}
+
+.main-content.home .finding-body {
+  padding: 12px 16px 16px;
+  gap: 7px;
+}
+
+.main-content.home .what {
+  font-size: 13.5px;
+  max-width: 76ch;
+}
+
+.main-content.home .hidden-findings {
+  margin-top: 12px;
+}
+
+.main-content.home .hidden-findings[hidden] {
+  display: none;
+}
+
+.main-content.home .more {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.main-content.home .more:hover {
+  color: hsl(var(--foreground));
+}
+
+.main-content.home .more:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+.main-content.home .tab {
+  padding: 7px 12px;
+}
+
+.main-content.home .panel {
+  padding: 16px 24px 24px;
+}
+
+.main-content.home .panel-head {
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .loading-banner {
@@ -819,6 +952,38 @@ table.list-table td {
 
   .main-content {
     padding: 16px 14px 40px;
+  }
+
+  .main-content.home {
+    padding: 48px 16px 64px;
+  }
+
+  .main-content.home .regions {
+    gap: 64px;
+  }
+
+  .main-content.home .cols {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .main-content.home .strip-lead {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .main-content.home .flow {
+    flex-direction: column;
+  }
+
+  .main-content.home .step {
+    border-right: 0;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .main-content.home .step:last-child {
+    border-bottom: 0;
   }
 
   .hint-banner {
