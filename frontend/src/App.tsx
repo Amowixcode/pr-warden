@@ -51,7 +51,7 @@ function App() {
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <WorkflowHint />
-        <div className="main-content">
+        <div className={route.view === "home" ? "main-content home" : "main-content"}>
           {route.view === "home" && <Home onNavigate={navigate} />}
 
           {route.view === "review-detail" && <ReviewDetail id={route.id} />}
