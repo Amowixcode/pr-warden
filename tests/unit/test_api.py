@@ -1,37 +1,19 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from github import GithubException
-from openai import OpenAIError
 
 from agents.state import AgentResult
 from api import rate_limiter
 from api.main import app
 from config.settings import get_settings
 from core.doctor_service import CheckResult, DoctorResult
-from core.ingest_service import IngestResult
 from core.pr_service import OpenPR
-from core.review_service import ReviewResult
 
 client = TestClient(app)
-
-
-def _review_result_mock() -> AsyncMock:
-    return AsyncMock(
-        return_value=ReviewResult(
-            pr_number=7,
-            summary="Looks good",
-            verdict="APPROVE",
-            issues=[],
-            suggestions=[],
-            security_result=_agent_result(),
-            quality_result=_agent_result(),
-            test_result=_agent_result(),
-        )
-    )
 
 
 def _agent_result(
@@ -45,92 +27,140 @@ def _agent_result(
     )
 
 
-def test_review_endpoint_returns_review_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock = AsyncMock(
-        return_value=ReviewResult(
-            pr_number=7,
-            summary="Looks good",
-            verdict="APPROVE",
-            issues=[],
-            suggestions=["Add tests"],
-            security_result=_agent_result(),
-            quality_result=_agent_result(),
-            test_result=_agent_result(),
-        )
+def _job_row(job_id: uuid.UUID, kind: str = "review", **overrides: object) -> dict:
+    row = {
+        "id": str(job_id),
+        "kind": kind,
+        "repo": "octocat/Hello-World",
+        "pr_number": 7,
+        "status": "running",
+        "stage": "queued",
+        "result": None,
+        "error": None,
+        "created_at": "2024-06-01T00:00:00+00:00",
+        "updated_at": "2024-06-01T00:00:00+00:00",
+    }
+    row.update(overrides)
+    return row
+
+
+def _mock_create_job(created: bool = True):
+    """A create_job-shaped mock: returns (job row matching the call, created)."""
+
+    def _create(job_id, kind, repo, pr_number=None):
+        return _job_row(job_id, kind=kind, repo=repo, pr_number=pr_number), created
+
+    return MagicMock(side_effect=_create)
+
+
+def test_review_endpoint_returns_202_with_job_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    start_job = AsyncMock()
+    monkeypatch.setattr("api.routes.review.start_review_job", start_job)
+
+    response = client.post(
+        "/review", json={"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(job_id)}
     )
-    monkeypatch.setattr("api.routes.review.review_pr", mock)
 
-    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["verdict"] == "APPROVE"
-    assert data["pr_number"] == 7
-    assert data["suggestions"] == ["Add tests"]
-    assert data["security_result"]["verdict"] == "APPROVE"
-    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=False)
+    assert response.status_code == 202
+    assert response.json() == {"job_id": str(job_id)}
+    start_job.assert_awaited_once_with(job_id, "octocat", "Hello-World", 7, False)
 
 
 def test_review_endpoint_full_flag_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
     """The only way the web UI can force a fresh review of a PR showing a stale cached verdict —
     see issue #124.
     """
-    mock = _review_result_mock()
-    monkeypatch.setattr("api.routes.review.review_pr", mock)
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    start_job = AsyncMock()
+    monkeypatch.setattr("api.routes.review.start_review_job", start_job)
 
     response = client.post(
-        "/review", json={"repo": "octocat/Hello-World", "pr_number": 7, "full": True}
+        "/review",
+        json={
+            "repo": "octocat/Hello-World",
+            "pr_number": 7,
+            "full": True,
+            "job_id": str(job_id),
+        },
     )
 
-    assert response.status_code == 200
-    mock.assert_awaited_once_with("octocat", "Hello-World", 7, full=True)
+    assert response.status_code == 202
+    start_job.assert_awaited_once_with(job_id, "octocat", "Hello-World", 7, True)
+
+
+def test_review_endpoint_duplicate_job_id_does_not_reschedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The client-generated job_id makes creation idempotent: a retried/duplicated POST with
+    the same id must not start a second review.
+    """
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job(created=False))
+    start_job = AsyncMock()
+    monkeypatch.setattr("api.routes.review.start_review_job", start_job)
+
+    response = client.post(
+        "/review", json={"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(job_id)}
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"job_id": str(job_id)}
+    start_job.assert_not_called()
+
+
+def test_review_endpoint_missing_job_id_is_422() -> None:
+    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+
+    assert response.status_code == 422
 
 
 def test_review_endpoint_invalid_repo_format() -> None:
-    response = client.post("/review", json={"repo": "invalid", "pr_number": 7})
+    response = client.post(
+        "/review", json={"repo": "invalid", "pr_number": 7, "job_id": str(uuid.uuid4())}
+    )
 
     assert response.status_code == 400
     assert "owner/repo" in response.json()["detail"]
 
 
-def test_review_endpoint_github_exception_maps_to_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock = AsyncMock(side_effect=GithubException(404, {"message": "Not Found"}, None))
-    monkeypatch.setattr("api.routes.review.review_pr", mock)
+def test_ingest_endpoint_returns_202_with_job_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.ingest.create_job", _mock_create_job())
+    start_job = AsyncMock()
+    monkeypatch.setattr("api.routes.ingest.start_ingest_job", start_job)
 
-    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 999})
+    response = client.post("/ingest", json={"repo": "octocat/Hello-World", "job_id": str(job_id)})
 
-    assert response.status_code == 404
-    assert "Not Found" in response.json()["detail"]
-
-
-def test_review_endpoint_openai_exception_maps_to_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock = AsyncMock(side_effect=OpenAIError("rate limited"))
-    monkeypatch.setattr("api.routes.review.review_pr", mock)
-
-    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
-
-    assert response.status_code == 502
-    assert "OpenAI API error" in response.json()["detail"]
+    assert response.status_code == 202
+    assert response.json() == {"job_id": str(job_id)}
+    start_job.assert_awaited_once_with(job_id, "octocat", "Hello-World", False)
 
 
-def test_ingest_endpoint_returns_ingest_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock = AsyncMock(
-        return_value=IngestResult(
-            issues_indexed=3, prs_indexed=2, commits_indexed=10, total_newly_indexed=15
-        )
-    )
-    monkeypatch.setattr("api.routes.ingest.ingest_repository", mock)
+def test_ingest_endpoint_duplicate_job_id_does_not_reschedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.ingest.create_job", _mock_create_job(created=False))
+    start_job = AsyncMock()
+    monkeypatch.setattr("api.routes.ingest.start_ingest_job", start_job)
 
+    response = client.post("/ingest", json={"repo": "octocat/Hello-World", "job_id": str(job_id)})
+
+    assert response.status_code == 202
+    start_job.assert_not_called()
+
+
+def test_ingest_endpoint_missing_job_id_is_422() -> None:
     response = client.post("/ingest", json={"repo": "octocat/Hello-World"})
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total_newly_indexed"] == 15
-    mock.assert_awaited_once_with("octocat", "Hello-World")
+    assert response.status_code == 422
 
 
 def test_ingest_endpoint_invalid_repo_format() -> None:
-    response = client.post("/ingest", json={"repo": "invalid"})
+    response = client.post("/ingest", json={"repo": "invalid", "job_id": str(uuid.uuid4())})
 
     assert response.status_code == 400
     assert "owner/repo" in response.json()["detail"]
@@ -139,16 +169,14 @@ def test_ingest_endpoint_invalid_repo_format() -> None:
 def test_ingest_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """POST /ingest is public — same as /reviews, /prs, and /health."""
     monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
-    mock = AsyncMock(
-        return_value=IngestResult(
-            issues_indexed=0, prs_indexed=0, commits_indexed=0, total_newly_indexed=0
-        )
+    monkeypatch.setattr("api.routes.ingest.create_job", _mock_create_job())
+    monkeypatch.setattr("api.routes.ingest.start_ingest_job", AsyncMock())
+
+    response = client.post(
+        "/ingest", json={"repo": "octocat/Hello-World", "job_id": str(uuid.uuid4())}
     )
-    monkeypatch.setattr("api.routes.ingest.ingest_repository", mock)
 
-    response = client.post("/ingest", json={"repo": "octocat/Hello-World"})
-
-    assert response.status_code == 200
+    assert response.status_code == 202
 
 
 def test_reviews_endpoint_returns_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -310,7 +338,10 @@ def test_health_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch)
 def test_review_endpoint_returns_401_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
 
-    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+    response = client.post(
+        "/review",
+        json={"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(uuid.uuid4())},
+    )
 
     assert response.status_code == 401
 
@@ -320,7 +351,7 @@ def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.Monk
 
     response = client.post(
         "/review",
-        json={"repo": "octocat/Hello-World", "pr_number": 7},
+        json={"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(uuid.uuid4())},
         headers={"X-API-Key": "wrong"},
     )
 
@@ -333,7 +364,10 @@ def test_review_endpoint_returns_401_with_wrong_api_key(monkeypatch: pytest.Monk
 def test_review_endpoint_rejects_repo_outside_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "review_allowed_repos", "octocat/Hello-World")
 
-    response = client.post("/review", json={"repo": "evil/other-repo", "pr_number": 7})
+    response = client.post(
+        "/review",
+        json={"repo": "evil/other-repo", "pr_number": 7, "job_id": str(uuid.uuid4())},
+    )
 
     assert response.status_code == 403
     assert "allowlist" in response.json()["detail"]
@@ -341,22 +375,30 @@ def test_review_endpoint_rejects_repo_outside_allowlist(monkeypatch: pytest.Monk
 
 def test_review_endpoint_allows_repo_in_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "review_allowed_repos", "octocat/Hello-World")
-    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    monkeypatch.setattr("api.routes.review.start_review_job", AsyncMock())
 
-    response = client.post("/review", json={"repo": "octocat/Hello-World", "pr_number": 7})
+    response = client.post(
+        "/review",
+        json={"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(uuid.uuid4())},
+    )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
 
 def test_review_endpoint_no_allowlist_configured_allows_any_repo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(get_settings(), "review_allowed_repos", None)
-    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    monkeypatch.setattr("api.routes.review.start_review_job", AsyncMock())
 
-    response = client.post("/review", json={"repo": "anyone/anything", "pr_number": 7})
+    response = client.post(
+        "/review",
+        json={"repo": "anyone/anything", "pr_number": 7, "job_id": str(uuid.uuid4())},
+    )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
@@ -413,13 +455,16 @@ def test_cors_no_allowed_origin_configured_blocks_everything(
 def test_review_rate_limit_triggers_after_max_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
     monkeypatch.setattr(get_settings(), "review_rate_limit_max_calls", 2)
-    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    monkeypatch.setattr("api.routes.review.start_review_job", AsyncMock())
 
-    body = {"repo": "octocat/Hello-World", "pr_number": 7}
-    assert client.post("/review", json=body).status_code == 200
-    assert client.post("/review", json=body).status_code == 200
+    def _body() -> dict:
+        return {"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(uuid.uuid4())}
 
-    response = client.post("/review", json=body)
+    assert client.post("/review", json=_body()).status_code == 202
+    assert client.post("/review", json=_body()).status_code == 202
+
+    response = client.post("/review", json=_body())
 
     assert response.status_code == 429
 
@@ -428,11 +473,14 @@ def test_review_rate_limit_resets_outside_window(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(rate_limiter, "_call_timestamps", [])
     monkeypatch.setattr(get_settings(), "review_rate_limit_max_calls", 1)
     monkeypatch.setattr(get_settings(), "review_rate_limit_window_seconds", 0)
-    monkeypatch.setattr("api.routes.review.review_pr", _review_result_mock())
+    monkeypatch.setattr("api.routes.review.create_job", _mock_create_job())
+    monkeypatch.setattr("api.routes.review.start_review_job", AsyncMock())
 
-    body = {"repo": "octocat/Hello-World", "pr_number": 7}
-    assert client.post("/review", json=body).status_code == 200
-    assert client.post("/review", json=body).status_code == 200
+    def _body() -> dict:
+        return {"repo": "octocat/Hello-World", "pr_number": 7, "job_id": str(uuid.uuid4())}
+
+    assert client.post("/review", json=_body()).status_code == 202
+    assert client.post("/review", json=_body()).status_code == 202
 
 
 # ── List open PRs ────────────────────────────────────────────────────────────
@@ -544,5 +592,93 @@ def test_review_detail_endpoint_never_requires_api_key(monkeypatch: pytest.Monke
     )
 
     response = client.get("/reviews/1")
+
+    assert response.status_code == 200
+
+
+# ── Job polling ──────────────────────────────────────────────────────────────
+
+
+def test_job_endpoint_returns_running_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    row = _job_row(job_id, status="running", stage="running review agents")
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: row)
+
+    response = client.get(f"/jobs/{job_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "running"
+    assert data["stage"] == "running review agents"
+    assert data["result"] is None
+
+
+def test_job_endpoint_returns_succeeded_job_with_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    row = _job_row(
+        job_id,
+        status="succeeded",
+        stage="done",
+        result={"pr_number": 7, "verdict": "APPROVE"},
+    )
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: row)
+
+    response = client.get(f"/jobs/{job_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "succeeded"
+    assert data["result"]["verdict"] == "APPROVE"
+
+
+def test_job_endpoint_returns_failed_job_with_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    row = _job_row(job_id, status="failed", error="GitHub API error: Not Found")
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: row)
+
+    response = client.get(f"/jobs/{job_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert data["error"] == "GitHub API error: Not Found"
+
+
+def test_job_endpoint_stale_running_job_reads_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end check that the dead-job read-time transform (core/supabase_jobs.py, tested
+    directly in test_supabase_jobs.py) actually reaches the HTTP response unaltered.
+    """
+    job_id = uuid.uuid4()
+    row = _job_row(job_id, status="failed", error="Job stalled — no progress reported recently.")
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: row)
+
+    response = client.get(f"/jobs/{job_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "stalled" in data["error"]
+
+
+def test_job_endpoint_404_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: None)
+
+    response = client.get(f"/jobs/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_job_endpoint_invalid_id_is_422() -> None:
+    response = client.get("/jobs/not-a-uuid")
+
+    assert response.status_code == 422
+
+
+def test_job_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "api_shared_key", "s3cr3t")
+    job_id = uuid.uuid4()
+    monkeypatch.setattr("api.routes.jobs.get_job", lambda _id: _job_row(job_id))
+
+    response = client.get(f"/jobs/{job_id}")
 
     assert response.status_code == 200

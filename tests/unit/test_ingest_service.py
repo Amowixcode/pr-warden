@@ -230,3 +230,24 @@ async def test_ingest_repository_saves_record_after_completion() -> None:
     saved_record = args[2]
     assert isinstance(saved_record, IngestRecord)
     assert isinstance(saved_record.last_ingested_at, datetime)
+
+
+# ── on_stage (job progress reporting) ────────────────────────────────────────
+
+
+async def test_ingest_repository_calls_on_stage_with_expected_stages_in_order() -> None:
+    mocks = _make_patches()
+    seen: list[str] = []
+
+    async def on_stage(stage: str) -> None:
+        seen.append(stage)
+
+    with _apply(mocks):
+        await ingest_repository("owner", "repo", on_stage=on_stage)
+
+    assert seen == [
+        "fetching repository data",
+        "indexing issues",
+        "indexing merged PRs",
+        "indexing commits",
+    ]

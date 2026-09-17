@@ -64,6 +64,8 @@ function App() {
                 key={`${route.prefillRepo ?? ""}-${route.prefillPr ?? ""}`}
                 prefillRepo={route.prefillRepo}
                 prefillPr={route.prefillPr}
+                jobId={route.jobId}
+                onNavigate={navigate}
               />
             </>
           )}
@@ -80,7 +82,9 @@ function App() {
                   }
                 />
               )}
-              {route.section === "ingest" && <IngestForm />}
+              {route.section === "ingest" && (
+                <IngestForm jobId={route.jobId} onNavigate={navigate} />
+              )}
             </>
           )}
         </div>

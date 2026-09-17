@@ -29,3 +29,22 @@ create table if not exists ingests (
 );
 
 create index if not exists ingests_repo_idx on ingests (repo);
+
+-- Background job tracking for POST /review and POST /ingest (see core/supabase_jobs.py).
+-- Unlike reviews/ingests above, jobs have no local-JSON fallback — this table is the only
+-- place job state lives, polled by GET /jobs/{id}. id is client-generated (not identity),
+-- so a retried/duplicate POST with the same id can't start the underlying work twice.
+create table if not exists jobs (
+    id uuid primary key,
+    kind text not null,
+    repo text not null,
+    pr_number integer,
+    status text not null default 'running',
+    stage text not null default 'queued',
+    result jsonb,
+    error text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists jobs_created_at_idx on jobs (created_at desc);

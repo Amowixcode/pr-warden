@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -9,10 +10,12 @@ class ReviewRequest(BaseModel):
     repo: str
     pr_number: int
     full: bool = False
+    job_id: uuid.UUID
 
 
 class IngestRequest(BaseModel):
     repo: str
+    job_id: uuid.UUID
 
 
 class AgentResultModel(BaseModel):
@@ -22,33 +25,6 @@ class AgentResultModel(BaseModel):
     verdict: str
     issues: list[str]
     suggestions: list[str]
-
-
-class ReviewResponse(BaseModel):
-    model_config = {"from_attributes": True}
-
-    pr_number: int
-    summary: str
-    verdict: str
-    issues: list[str]
-    suggestions: list[str]
-    security_result: AgentResultModel
-    quality_result: AgentResultModel
-    test_result: AgentResultModel
-    incremental: bool = False
-    cached: bool = False
-    prior_verdict: str | None = None
-    prior_head_sha: str | None = None
-
-
-class IngestResponse(BaseModel):
-    model_config = {"from_attributes": True}
-
-    issues_indexed: int
-    prs_indexed: int
-    commits_indexed: int
-    total_newly_indexed: int
-    incremental: bool = False
 
 
 class CheckResultModel(BaseModel):
@@ -105,4 +81,28 @@ class ReviewDetailResponse(BaseModel):
     security_result: AgentResultModel | None = None
     quality_result: AgentResultModel | None = None
     test_result: AgentResultModel | None = None
+
+
+class JobCreated(BaseModel):
+    """The 202 body POST /review and POST /ingest return immediately — the work itself runs
+    in the background and is polled via GET /jobs/{job_id}.
+    """
+
+    job_id: uuid.UUID
+
+
+class JobResponse(BaseModel):
+    """GET /jobs/{job_id} — result/error are only populated once status is terminal. stage is
+    a short label ("running review agents"), never a percentage: review has no honest fraction
+    to report.
+    """
+
+    id: uuid.UUID
+    kind: str
+    status: str
+    stage: str
+    result: dict | None = None
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
     created_at: datetime

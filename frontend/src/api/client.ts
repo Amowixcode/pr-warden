@@ -1,9 +1,8 @@
 import type {
-  IngestResponse,
+  Job,
   OpenPRResponse,
   ReviewDetail,
   ReviewHistoryItem,
-  ReviewResponse,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -48,22 +47,30 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** POST /review — returns immediately with a job id; poll getJob() for the result. */
 export function reviewPr(
   repo: string,
   prNumber: number,
+  jobId: string,
   full = false,
-): Promise<ReviewResponse> {
-  return request<ReviewResponse>("/review", {
+): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>("/review", {
     method: "POST",
-    body: JSON.stringify({ repo, pr_number: prNumber, full }),
+    body: JSON.stringify({ repo, pr_number: prNumber, full, job_id: jobId }),
   });
 }
 
-export function ingestRepository(repo: string): Promise<IngestResponse> {
-  return request<IngestResponse>("/ingest", {
+/** POST /ingest — returns immediately with a job id; poll getJob() for the result. */
+export function ingestRepository(repo: string, jobId: string): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>("/ingest", {
     method: "POST",
-    body: JSON.stringify({ repo }),
+    body: JSON.stringify({ repo, job_id: jobId }),
   });
+}
+
+/** GET /jobs/{id} — poll a background review/ingest job started by reviewPr()/ingestRepository(). */
+export function getJob(id: string): Promise<Job> {
+  return request<Job>(`/jobs/${id}`, { method: "GET" });
 }
 
 export function listOpenPrs(owner: string, repo: string): Promise<OpenPRResponse[]> {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -31,7 +32,12 @@ class IngestResult:
     incremental: bool = False
 
 
-async def ingest_repository(owner: str, repo: str, full: bool = False) -> IngestResult:
+async def ingest_repository(
+    owner: str,
+    repo: str,
+    full: bool = False,
+    on_stage: Callable[[str], Awaitable[None]] | None = None,
+) -> IngestResult:
     """Fetch repo history, embed, and store in ChromaDB.
 
     Incremental by default: if this repo was ingested before, only issues/PRs/commits
@@ -43,6 +49,9 @@ async def ingest_repository(owner: str, repo: str, full: bool = False) -> Ingest
         owner: GitHub repository owner (user or organisation).
         repo: Repository name.
         full: Force a complete re-ingestion, ignoring any prior ingest history.
+        on_stage: Optional async callback invoked with a short human-readable label as each
+            phase starts — see review_pr's on_stage for the same contract. Never called for
+            direct/CLI callers, which pass nothing.
 
     Returns:
         IngestResult with counts of newly indexed documents per type.
@@ -54,6 +63,8 @@ async def ingest_repository(owner: str, repo: str, full: bool = False) -> Ingest
     prior_record = None if full else load_ingest_record(owner, repo)
     since = prior_record.last_ingested_at if prior_record else None
 
+    if on_stage:
+        await on_stage("fetching repository data")
     issues, prs, commits = await asyncio.gather(
         fetch_issues(client, owner, repo, since=since),
         fetch_merged_prs(client, owner, repo, since=since),
@@ -68,8 +79,14 @@ async def ingest_repository(owner: str, repo: str, full: bool = False) -> Ingest
     embed_model = get_embed_model()
     index = build_vector_store_index(collection, embed_model)
 
+    if on_stage:
+        await on_stage("indexing issues")
     n_issues = await index_documents(issue_docs, index, collection)
+    if on_stage:
+        await on_stage("indexing merged PRs")
     n_prs = await index_documents(pr_docs, index, collection)
+    if on_stage:
+        await on_stage("indexing commits")
     n_commits = await index_documents(commit_docs, index, collection)
 
     save_ingest_record(owner, repo, IngestRecord(last_ingested_at=run_started_at))
