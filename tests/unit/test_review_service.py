@@ -375,3 +375,46 @@ async def test_review_pr_saves_review_record_after_completion() -> None:
     assert saved_record.verdict == _VALID_FINAL_VERDICT.verdict
     assert saved_record.summary == _VALID_FINAL_VERDICT.summary
     assert saved_record.security_result.summary == _SECURITY_RESULT.summary
+
+
+# ── on_stage (job progress reporting) ────────────────────────────────────────
+
+
+async def test_review_pr_calls_on_stage_with_expected_stages_in_order() -> None:
+    """A background job has no honest percentage for this — it reports which phase it's on.
+    These are the phases review_pr actually goes through, in the order it goes through them.
+    """
+    pr = _make_pr()
+    mocks = _make_patches(pr, _make_context())
+    seen: list[str] = []
+
+    async def on_stage(stage: str) -> None:
+        seen.append(stage)
+
+    with _apply(mocks):
+        await review_pr("owner", "repo", 7, on_stage=on_stage)
+
+    assert seen == [
+        "fetching pull request",
+        "retrieving context",
+        "running review agents",
+        "saving results",
+    ]
+
+
+async def test_review_pr_cached_result_only_reports_the_fetch_stage() -> None:
+    """The cached short-circuit still has to fetch the PR to compare head_sha, but returns
+    near-instantly after that — no retrieval/agent/save stages to report.
+    """
+    pr = _make_pr(head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    mocks["load_review_record"] = MagicMock(return_value=_make_review_record(head_sha="same-sha"))
+    seen: list[str] = []
+
+    async def on_stage(stage: str) -> None:
+        seen.append(stage)
+
+    with _apply(mocks):
+        await review_pr("owner", "repo", 7, on_stage=on_stage)
+
+    assert seen == ["fetching pull request"]

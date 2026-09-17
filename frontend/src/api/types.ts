@@ -64,3 +64,16 @@ export interface OpenPRResponse {
   age_days: number;
 }
 
+export type JobStatus = "running" | "succeeded" | "failed";
+
+export interface Job {
+  id: string;
+  kind: "review" | "ingest";
+  status: JobStatus;
+  stage: string;
+  result: ReviewResponse | IngestResponse | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

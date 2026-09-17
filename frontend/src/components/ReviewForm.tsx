@@ -2,46 +2,50 @@ import { useState } from "react";
 import { ApiError, reviewPr } from "../api/client";
 import type { ReviewResponse } from "../api/types";
 import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
+import { useJobPolling } from "../hooks/useJobPolling";
+import { JobStageBanner } from "./JobStageBanner";
 import { LoadingBanner } from "./LoadingBanner";
 import { ReviewResults } from "./ReviewResults";
 
 export function ReviewForm({
   prefillRepo,
   prefillPr,
+  jobId,
+  onNavigate,
 }: {
   prefillRepo?: string;
   prefillPr?: number;
+  jobId?: string;
+  onNavigate: (hash: string) => void;
 }) {
   const [repo, setRepo] = useState(prefillRepo ?? "");
   const [prNumber, setPrNumber] = useState(prefillPr !== undefined ? String(prefillPr) : "");
-  const [submittedRepo, setSubmittedRepo] = useState<string | null>(null);
   const { phase, run } = useHealthAwareLoading();
-  const loading = phase !== "idle";
+  const submitting = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ReviewResponse | null>(null);
+  const job = useJobPolling(jobId);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function startJob(targetRepo: string, targetPr: number, full: boolean) {
     setError(null);
-    setResult(null);
+    const newJobId = crypto.randomUUID();
     try {
-      const data = await run(() => reviewPr(repo, Number(prNumber)));
-      setResult(data);
-      setSubmittedRepo(repo);
+      await run(() => reviewPr(targetRepo, targetPr, newJobId, full));
+      onNavigate(
+        `#/review?repo=${encodeURIComponent(targetRepo)}&pr=${targetPr}&job=${newJobId}`,
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     }
   }
 
-  async function handleRerun() {
-    if (!result || !submittedRepo) return;
-    setError(null);
-    try {
-      const data = await run(() => reviewPr(submittedRepo, result.pr_number, true));
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
-    }
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void startJob(repo, Number(prNumber), false);
+  }
+
+  function handleRerun() {
+    if (!prefillRepo || !job.result) return;
+    void startJob(prefillRepo, (job.result as ReviewResponse).pr_number, true);
   }
 
   return (
@@ -71,17 +75,27 @@ export function ReviewForm({
             required
           />
         </div>
-        <button className="btn" type="submit" disabled={loading}>
-          {loading ? "Reviewing…" : "Review PR"}
+        <button className="btn" type="submit" disabled={submitting}>
+          {submitting ? "Starting…" : "Review PR"}
         </button>
       </form>
 
-      <LoadingBanner phase={phase} runningLabel="Running review" />
+      <LoadingBanner phase={phase} runningLabel="Starting the review" />
 
       {error && <div className="error-banner">{error}</div>}
 
-      {result && submittedRepo && !loading && (
-        <ReviewResults result={result} repo={submittedRepo} onRerun={handleRerun} />
+      {jobId && job.status === "running" && <JobStageBanner stage={job.stage} />}
+
+      {jobId && job.status === "failed" && (
+        <div className="error-banner">{job.error ?? "The review failed."}</div>
+      )}
+
+      {jobId && job.status === "succeeded" && job.result && prefillRepo && (
+        <ReviewResults
+          result={job.result as ReviewResponse}
+          repo={prefillRepo}
+          onRerun={handleRerun}
+        />
       )}
     </div>
   );

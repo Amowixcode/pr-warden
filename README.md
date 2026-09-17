@@ -119,8 +119,16 @@ a credential. It has five sections, each calling the API below:
 | `GET` | `/reviews` | none |
 | `GET` | `/reviews/{id}` | none |
 | `GET` | `/prs/{owner}/{repo}` | none |
+| `GET` | `/jobs/{id}` | none |
 | `POST` | `/review` | API key (if set) + repo allowlist + per-review rate limit |
 | `POST` | `/ingest` | none |
+
+`POST /review` and `POST /ingest` return `202` immediately with a job id — the review/ingest
+itself runs in the background and is polled via `GET /jobs/{id}` until it succeeds or fails.
+`job_id` is a client-generated UUID sent in the request body, making creation idempotent: a
+retried or double-submitted POST with the same id hits the existing job instead of starting the
+work a second time. Job ids are opaque and unauthenticated by design, same reasoning as
+`GET /reviews/{id}`.
 
 The frontend's own `X-API-Key` value (`VITE_API_KEY`, set at Vercel build time) is **not a
 security boundary** — a single-page app has to send it, so it's visible in any browser's
@@ -129,17 +137,21 @@ repo allowlist (`REVIEW_ALLOWED_REPOS`). See [`DEPLOY.md`](DEPLOY.md) for the fu
 protected breakdown, how the API (Render) and frontend (Vercel) are deployed and wired
 together, and the cost controls that back `/review`.
 
-## Supabase setup (optional)
+## Supabase setup
 
-Local JSON history (above) is all that's needed for the CLI's incremental caching. Supabase is
-an optional, additive store on top of that, used to serve `GET /reviews` from the API layer.
+Local JSON history (above) is all that's needed for the CLI's incremental caching, and remains
+optional for `warden review`/`warden ingest` — without `SUPABASE_URL`/`SUPABASE_KEY` set, the
+CLI works exactly as before, Supabase writes are skipped, and `GET /reviews` returns `[]`.
+
+The web API is different: `POST /review` and `POST /ingest` track their background jobs in
+Supabase's `jobs` table (see the endpoint table above) — there's no local-file fallback for
+that, since a job has to be readable by `GET /jobs/{id}` from a separate request. **Supabase is
+required for the API's `/review` and `/ingest` endpoints**; without it configured, they return a
+clear `5xx` rather than silently running synchronously.
 
 1. Run [`supabase/schema.sql`](supabase/schema.sql) in your Supabase project's SQL editor —
-   it creates the `reviews` and `ingests` tables.
+   it creates the `reviews`, `ingests`, and `jobs` tables.
 2. Set `SUPABASE_URL` and `SUPABASE_KEY` in `.env`.
-
-Without these two variables set, review/ingest still work exactly as before — Supabase writes
-are skipped, and `GET /reviews` returns `[]`.
 
 ## Known Limitations
 
