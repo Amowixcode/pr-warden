@@ -52,11 +52,24 @@ class AllowedOriginMiddleware(BaseHTTPMiddleware):
             )
 
         response = await call_next(request)
-        # Same Cloudflare-caching reasoning as above, applied to every non-preflight response
-        # this middleware sees (including error responses from _ExternalApiErrorMiddleware,
-        # which this middleware wraps — see its ordering comment in api/main.py).
-        response.headers["Vary"] = "Origin"
-        if allowed:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+        apply_cors_headers(request, response)
         return response
+
+
+def apply_cors_headers(request: Request, response: Response) -> None:
+    """Add CORS headers to `response` for `request`'s Origin, if allowed.
+
+    Shared with the catch-all exception handler in api/main.py: Starlette runs a handler
+    registered for the literal `Exception` class inside ServerErrorMiddleware, which sits
+    outside every user-added middleware (including AllowedOriginMiddleware), so that handler's
+    response never passes through AllowedOriginMiddleware.dispatch.
+    """
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+    # Cloudflare sits in front of Render and can cache a response keyed only on URL — without
+    # this, one origin's response could be served back to a different origin from cache.
+    response.headers["Vary"] = "Origin"
+    if origin in get_settings().allowed_origins_set:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
