@@ -404,10 +404,12 @@ def test_review_endpoint_no_allowlist_configured_allows_any_repo(
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
 _ALLOWED_ORIGIN = "https://allowed.example.com"
+_ALLOWED_ORIGIN_2 = "https://allowed-preview.example.com"
+_ALLOWED_ORIGINS = f"{_ALLOWED_ORIGIN},{_ALLOWED_ORIGIN_2}"
 
 
 def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origins", _ALLOWED_ORIGINS)
 
     response = client.options(
         "/health",
@@ -421,32 +423,58 @@ def test_cors_preflight_disallowed_origin_blocked(monkeypatch: pytest.MonkeyPatc
 
 
 def test_cors_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origins", _ALLOWED_ORIGINS)
 
     response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
+    assert response.headers["vary"] == "Origin"
+
+
+def test_cors_second_allowed_origin_gets_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A second configured origin (e.g. a Vercel branch preview's own subdomain) must also be
+    allowed — this is the multi-origin behavior this feature adds.
+    """
+    monkeypatch.setattr(get_settings(), "allowed_origins", _ALLOWED_ORIGINS)
+
+    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN_2})
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN_2
 
 
 def test_cors_disallowed_origin_gets_no_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "allowed_origin", _ALLOWED_ORIGIN)
+    monkeypatch.setattr(get_settings(), "allowed_origins", _ALLOWED_ORIGINS)
 
     response = client.get("/health", headers={"Origin": "https://evil.example.com"})
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+    assert response.headers["vary"] == "Origin"
 
 
-def test_cors_no_allowed_origin_configured_blocks_everything(
+def test_cors_no_allowed_origins_configured_blocks_everything(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(get_settings(), "allowed_origin", None)
+    monkeypatch.setattr(get_settings(), "allowed_origins", None)
 
     response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_trailing_slash_in_config_still_matches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A trailing slash pasted into ALLOWED_ORIGINS (e.g. copied from a browser address bar)
+    must still match the slash-less Origin header a browser actually sends.
+    """
+    monkeypatch.setattr(get_settings(), "allowed_origins", f"{_ALLOWED_ORIGIN}/")
+
+    response = client.get("/health", headers={"Origin": _ALLOWED_ORIGIN})
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
 
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
