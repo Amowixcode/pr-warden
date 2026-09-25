@@ -477,6 +477,29 @@ def test_cors_trailing_slash_in_config_still_matches(monkeypatch: pytest.MonkeyP
     assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
 
 
+def test_unhandled_exception_still_gets_cors_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A route that raises an exception with no typed handler (not ValidationError,
+    VectorStoreError, a GitHub/OpenAI SDK error, etc.) falls through to the catch-all
+    `@app.exception_handler(Exception)`. Its response must still carry CORS headers, or the
+    browser reports the real 500 as an opaque CORS failure instead of showing it.
+    """
+    monkeypatch.setattr(get_settings(), "allowed_origins", _ALLOWED_ORIGINS)
+    monkeypatch.setattr(
+        "api.routes.history.list_reviews",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    # The default `client` raises server exceptions instead of returning a response for a
+    # handler registered under the literal `Exception` class (see _ExternalApiErrorMiddleware's
+    # docstring in api/main.py) — a real ASGI server never does this, so disable it here too.
+    no_raise_client = TestClient(app, raise_server_exceptions=False)
+
+    response = no_raise_client.get("/reviews", headers={"Origin": _ALLOWED_ORIGIN})
+
+    assert response.status_code == 500
+    assert response.headers["access-control-allow-origin"] == _ALLOWED_ORIGIN
+    assert response.headers["vary"] == "Origin"
+
+
 # ── Rate limiting ────────────────────────────────────────────────────────────
 
 

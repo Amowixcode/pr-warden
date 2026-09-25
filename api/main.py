@@ -15,7 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from api.auth import require_api_key
-from api.cors import AllowedOriginMiddleware
+from api.cors import AllowedOriginMiddleware, apply_cors_headers
 from api.rate_limiter import check_review_rate_limit
 from api.routes.health import router as health_router
 from api.routes.history import router as history_router
@@ -94,7 +94,10 @@ app = FastAPI(title="pr-warden", description="Context-aware PR review API", life
 
 # Order matters: added first so it ends up closer to routing than CORS (see
 # _ExternalApiErrorMiddleware's docstring on Starlette's middleware stack ordering) — that way
-# CORS still post-processes a GitHub/OpenAI-mapped error response and adds its headers.
+# CORS still post-processes a GitHub/OpenAI-mapped error response and adds its headers. This
+# doesn't help the literal-`Exception` catch-all below, though: Starlette runs that one inside
+# ServerErrorMiddleware, which sits outside AllowedOriginMiddleware entirely, so that handler
+# calls apply_cors_headers itself.
 app.add_middleware(_ExternalApiErrorMiddleware)
 app.add_middleware(AllowedOriginMiddleware)
 
@@ -132,4 +135,6 @@ app.add_exception_handler(KeyError, _malformed_ai_response_handler)
 
 @app.exception_handler(Exception)
 async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"detail": f"unexpected error: {exc}"})
+    response = JSONResponse(status_code=500, content={"detail": f"unexpected error: {exc}"})
+    apply_cors_headers(request, response)
+    return response
