@@ -1,121 +1,86 @@
-# Deploying the API to Render
+# Deploying
 
-## Required environment variables
+The API runs on Render as a Docker service. The frontend runs on Vercel.
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `GITHUB_TOKEN` | yes | GitHub API access for fetching PRs, issues, commits |
-| `OPENAI_API_KEY` | yes | OpenAI access for the review agents |
-| `SUPABASE_URL` | **yes** | Supabase project URL. `POST /review` and `POST /ingest` track their background job in Supabase's `jobs` table — there's no local-file fallback for that, so both endpoints return a `5xx` without it. Also enables `GET /reviews` and history writes |
-| `SUPABASE_KEY` | **yes** | Supabase service/anon key, paired with `SUPABASE_URL` |
-| `API_SHARED_KEY` | no | Shared secret required as the `X-API-Key` header on `/review` and `/health/deep`. `/health`, `/reviews`, `/prs`, and `/ingest` are always unauthenticated — see [Public vs. protected endpoints](#public-vs-protected-endpoints) below. Unset = no auth on any endpoint (local dev default) |
-| `REVIEW_ALLOWED_REPOS` | no | Comma-separated `owner/repo` list. When set, `POST /review` rejects any other repo with `403`. Unset = any repo is reviewable (by anyone who has `API_SHARED_KEY`, or by anyone at all if that's also unset) |
-| `ALLOWED_ORIGIN` | no | The deployed frontend's origin (e.g. `https://your-app.vercel.app`) allowed to call the API cross-origin. Unset = no origin is allowed (fail-closed, not a wildcard) |
-| `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window before `429`. Default `20` |
-| `REVIEW_RATE_LIMIT_WINDOW_SECONDS` | no | Rate-limit window length in seconds. Default `3600` (1 hour) |
-
-`SUPABASE_URL`/`SUPABASE_KEY`, `API_SHARED_KEY`, `REVIEW_ALLOWED_REPOS`, and `ALLOWED_ORIGIN`
-are optional — the API runs without them, just with reduced functionality or protection (no
-review history persistence, no auth, no repo restriction, no browser access from a frontend).
-Set all of them in production — see [Cost controls](#cost-controls) below for why
-`REVIEW_ALLOWED_REPOS` in particular matters.
-
-## Frontend (Vercel) environment variables
+## API environment variables
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `VITE_API_BASE_URL` | yes | This Render service's URL, e.g. `https://your-service.onrender.com` |
-| `VITE_API_KEY` | no | Same value as this service's `API_SHARED_KEY`, if set. Baked into the frontend's JS bundle at build time and sent as `X-API-Key` on every request — **this is not a security boundary**. It's visible to anyone who opens the browser's network tab; it only deters opportunistic scanners. Real protection for `/review` is `REVIEW_ALLOWED_REPOS` above, not this key |
+| `GITHUB_TOKEN` | yes | Fetching PRs, issues and commits |
+| `OPENAI_API_KEY` | yes | Review agents and embeddings |
+| `SUPABASE_URL` | yes | Job tracking and review history |
+| `SUPABASE_KEY` | yes | Paired with `SUPABASE_URL` |
+| `ALLOWED_ORIGINS` | yes, for the web app | Comma-separated frontend origins allowed to call the API. Unset means none are allowed |
+| `REVIEW_ALLOWED_REPOS` | recommended | Comma-separated `owner/repo` list. `POST /review` rejects anything else with `403` |
+| `API_SHARED_KEY` | no | If set, `/review` and `/health/deep` require it as `X-API-Key` |
+| `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window. Default `20` |
+| `REVIEW_RATE_LIMIT_WINDOW_SECONDS` | no | Window length. Default `3600` |
 
-The frontend has no key-input field — visitors never see or type a key. `/reviews`, `/prs`,
-and `/health` don't need one at all; `/review` needs `VITE_API_KEY` to match the backend's
-`API_SHARED_KEY` only if that's configured.
+Without Supabase, `POST /review` and `POST /ingest` return `5xx`, because background jobs have nowhere else to live. The CLI works without it.
 
-## Public vs. protected endpoints
+`ALLOWED_ORIGINS` is matched exactly, apart from a trailing slash. Vercel gives every deployment a unique URL, so list the stable branch URL (`<project>-git-<branch>-<team>.vercel.app`) rather than a per-deploy one.
+
+## Frontend environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `VITE_API_BASE_URL` | yes | The Render service URL |
+| `VITE_API_KEY` | only if `API_SHARED_KEY` is set | Same value as `API_SHARED_KEY` |
+
+`VITE_API_KEY` is compiled into the JavaScript bundle and visible in the browser's network tab. It is not a security boundary. Set it as a plain config variable in Vercel, not as a secret.
+
+## Endpoints
 
 | Endpoint | Auth | Notes |
 |---|---|---|
-| `GET /health` | none | Liveness only, no I/O — see below |
-| `GET /reviews` | none | Powers the web app's History view and Home screen |
-| `GET /reviews/{id}` | none | One full review, including per-agent findings |
-| `GET /prs/{owner}/{repo}` | none | Read-only, cheap |
-| `GET /jobs/{id}` | none | Job ids are opaque, client-generated UUIDs — same reasoning as `GET /reviews/{id}` |
-| `POST /review` | `X-API-Key` if `API_SHARED_KEY` set | Also checks `REVIEW_ALLOWED_REPOS` and the rate limit below — the one endpoint that spends OpenAI budget. Returns `202` with a job id immediately; poll `GET /jobs/{id}` for the result |
-| `POST /ingest` | none | Exposed in the web UI's Ingest section, and also usable via `warden ingest`. Returns `202` with a job id immediately; poll `GET /jobs/{id}` for the result |
-| `GET /health/deep` | `X-API-Key` if `API_SHARED_KEY` set | Reveals whether GitHub/OpenAI credentials are valid |
+| `GET /health` | none | Liveness only, no I/O. Render's health check path |
+| `GET /health/deep` | key, if set | Live checks against GitHub, OpenAI, ChromaDB and Supabase |
+| `GET /reviews` | none | |
+| `GET /reviews/{id}` | none | One review including per-agent findings |
+| `GET /prs/{owner}/{repo}` | none | |
+| `GET /jobs/{id}` | none | |
+| `POST /review` | key, if set | Also checked against the allowlist and rate limit. Returns `202` and a job id |
+| `POST /ingest` | none | Returns `202` and a job id |
 
-## Deploy via Blueprint (recommended)
+Keep `/health` free of network calls. Render polls it continuously, and a health check that depends on GitHub or OpenAI turns an upstream hiccup into a restart loop.
 
-`render.yaml` at the repo root defines the service, a persistent disk mounted at `/app/data`
-(covers ChromaDB's collection plus the local ingest/review history JSON files — all three
-default under `./data/` relative to the container's `/app` working directory), and a `/health`
-health check.
+`job_id` is a UUID generated by the client, so a retried or double-clicked request reuses the existing job instead of starting a second one. A job still `running` with no progress for 5 minutes reads as `failed`.
 
-## Health endpoints
+## Deploying to Render
 
-| Endpoint | Purpose | Auth | I/O |
-|---|---|---|---|
-| `GET /health` | Liveness. Answers from process state only. This is Render's `healthCheckPath` — it's polled on every deploy and continuously afterwards, so it must stay cheap and never depend on GitHub/OpenAI/ChromaDB being reachable. | Never required | None |
-| `GET /health/deep` | The full setup/health check (Settings, GitHub, OpenAI, ChromaDB, Supabase) — same payload `/health` used to return before the split. For manual verification or monitoring, not polled by Render. | `X-API-Key` required when `API_SHARED_KEY` is set (it reveals whether GitHub/OpenAI credentials are valid) | Live network calls to GitHub, OpenAI, ChromaDB, Supabase |
+With the blueprint: **New → Blueprint**, pick this repo, fill in the variables Render prompts for, and deploy. `render.yaml` defines the service, the `/health` check and a 1 GB disk at `/app/data` for ChromaDB and the local history files.
 
-1. Push this branch (with `render.yaml` and `Dockerfile`) to GitHub.
-2. In the Render dashboard: **New → Blueprint**, select this repo.
-3. Render reads `render.yaml` and creates the web service + disk. You'll be prompted to fill in
-   the env vars listed above (`sync: false` means Render asks rather than storing them in the
-   file).
-4. Deploy.
+By hand: **New → Web Service** with the Docker environment, add a disk at `/app/data`, set the variables above, and set the health check path to `/health`.
 
-## Or configure manually via the dashboard
-
-1. **New → Web Service** → connect this repo → Environment: **Docker** (uses the root
-   `Dockerfile` automatically).
-2. **Disks** tab → add a disk, mount path `/app/data`, size 1 GB (or more).
-3. **Environment** tab → add the env vars above.
-4. **Settings** tab → Health Check Path: `/health`.
-5. Deploy.
+Persistent disks need a paid Render instance. On the free tier `/app/data` is wiped on every restart, and indexed repositories have to be ingested again.
 
 ## Cost controls
 
-`/review` is the only endpoint that spends OpenAI budget, so it's the only one with layered
-protection:
+`POST /review` is where the OpenAI spend is.
 
-1. **`REVIEW_ALLOWED_REPOS`** — rejects any repo not on the list with a `403`, before any
-   GitHub or OpenAI call is made. Bounds *what* can be reviewed.
-2. **The rate limit** (`REVIEW_RATE_LIMIT_MAX_CALLS`/`_WINDOW_SECONDS`) — bounds *how often*.
-   `check_review_rate_limit` (`api/rate_limiter.py`) is **per-process, in-memory state**: it
-   resets on every restart/redeploy and is not shared across replicas. That's adequate for
-   this project's single-instance Render deployment, but it is not a distributed rate limiter
-   and would need to move to shared storage (Redis, Supabase, etc.) before running more than
-   one instance.
-3. **A hard monthly spending cap on the OpenAI project itself** — this is the only control
-   here that reliably bounds the bill; the two above only reduce the chance of reaching it.
-   Set one manually: OpenAI dashboard → the project this deployment's `OPENAI_API_KEY` belongs
-   to → **Settings → Limits** → set a monthly budget. Do this before considering a public
-   deployment done — it is not configurable from this repo's code or env vars.
+- `REVIEW_ALLOWED_REPOS` limits what can be reviewed, before any GitHub or OpenAI call.
+- The rate limit limits how often. It lives in process memory, so it resets on restart and isn't shared between instances. Fine for one instance, not for more.
 
-## Verifying the deploy (manual — do this after deploying)
+OpenAI's monthly budgets only send alerts. They don't stop requests. The only hard stop OpenAI offers is prepaid credits with auto-recharge turned off, which blocks the whole organization once the balance runs out.
 
-1. `curl https://<your-service>.onrender.com/health` → expect `200` and `{"status": "ok"}`
-   immediately, regardless of GitHub/OpenAI/Chroma reachability.
-   `curl https://<your-service>.onrender.com/health/deep` (add `-H "X-API-Key: ..."` if
-   `API_SHARED_KEY` is set) → expect `200` and `{"checks": [...], "all_passed": true}`
-   (assuming GitHub/OpenAI/Chroma are all reachable).
-2. Ingest a small repo against the live URL. `POST /ingest` returns `202` immediately with a
-   job id — `job_id` is a client-generated UUID (any random one works for this check):
-   ```bash
-   curl -X POST https://<your-service>.onrender.com/ingest \
-     -H "Content-Type: application/json" \
-     -d '{"repo": "octocat/Hello-World", "job_id": "'"$(uuidgen)"'"}'
-   ```
-   Then poll the job id from the response until `status` is `succeeded` or `failed`:
-   ```bash
-   curl https://<your-service>.onrender.com/jobs/<job_id-from-above>
-   ```
-3. **Restart-survival check**: in the Render dashboard, manually restart the service. Once it's
-   back up, re-run the same `ingest` call (or hit `GET /reviews` if you'd reviewed a PR) and
-   confirm it reflects the prior run's data (e.g. an incremental ingest reports fewer/zero newly
-   indexed items instead of re-indexing everything) — this confirms the disk at `/app/data`
-   actually persisted across the restart rather than resetting to an empty container filesystem.
-   A job already `running` when the restart happens is orphaned by design — it reads back as
-   `failed` from `GET /jobs/{id}` once its `updated_at` goes stale (5 minutes with no progress),
-   rather than hanging forever.
+## Checking a deploy
+
+```bash
+curl https://<service>.onrender.com/health
+# {"status": "ok"}
+
+curl https://<service>.onrender.com/health/deep
+# {"checks": [...], "all_passed": true}
+```
+
+Ingest a small repo and poll the job:
+
+```bash
+curl -X POST https://<service>.onrender.com/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"repo": "octocat/Hello-World", "job_id": "'"$(uuidgen)"'"}'
+
+curl https://<service>.onrender.com/jobs/<job_id>
+```
+
+Then restart the service from the Render dashboard and ingest the same repo again. If the disk persisted, it reports few or no new documents.

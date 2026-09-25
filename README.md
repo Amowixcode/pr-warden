@@ -2,170 +2,84 @@
 
 [![CI](https://github.com/Amowixcode/pr-warden/actions/workflows/ci.yml/badge.svg)](https://github.com/Amowixcode/pr-warden/actions/workflows/ci.yml)
 
-Context-aware PR review CLI built with LangGraph multi-agent orchestration and RAG. Indexes a
-GitHub repo's history (issues, merged PRs, commits) into ChromaDB, then reviews pull requests
-with three specialist OpenAI-backed agents — security, quality, and test coverage — running in
-parallel and merged into one verdict. Available as a CLI (below) or as a hosted
-[web app](#web-app).
+AI pull request review with context from the repository's history.
 
-![Completed review in the web app](docs/screenshots/review-verdict.png)
+pr-warden indexes a repo's issues, commits and merged pull requests, then reviews a new PR with three agents running in parallel: security, code quality and test coverage. Their findings are merged into one verdict.
 
-## Architecture
+**[Try the web app](https://pr-warden.vercel.app)** · [API docs](https://pr-warden.onrender.com/docs)
+
+![A completed review](docs/screenshots/review-verdict.png)
+
+## Why it's different
+
+- Every finding must quote the diff it refers to. A string check confirms the quote exists and drops anything that doesn't. No second model grading the first.
+- The final verdict comes from a fixed rule, not a model, so the same findings always give the same result.
+- Past issues and PRs are retrieved as context, so a review can use what the project has already discussed.
+- Once a PR has been reviewed, later runs only look at new commits. If nothing changed, no model is called.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    A[GitHub repo<br/>issues, PRs, commits] -->|warden ingest| B[(ChromaDB<br/>vector store)]
-    B --> C[Retrieval<br/>PR context]
+    A[GitHub repo] -->|ingest| B[(Vector store)]
+    B --> C[Retrieval]
     C --> D[Security agent]
     C --> E[Quality agent]
     C --> F[Test agent]
     D --> G[Summarizer]
     E --> G
     F --> G
-    G --> H[Final Verdict]
+    G --> H[Verdict]
 ```
 
-See [`agents/README.md`](agents/README.md) for the full graph design and merge policy contract.
+The agent graph and merge rules are documented in [agents/README.md](agents/README.md).
 
-## Usage
+## Quick start
+
+Requires Python 3.11, [uv](https://docs.astral.sh/uv/), a GitHub token and an OpenAI API key.
 
 ```bash
-warden ingest owner/repo               # index a repo (incremental if ingested before)
-warden ingest owner/repo --full        # force a complete re-ingestion, ignoring ingest history
-warden review owner/repo 123           # review PR #123 (incremental if reviewed before)
-warden review owner/repo 123 --full    # force a complete review, ignoring prior review history
-warden review owner/repo 123 --json    # same review as machine-readable JSON, for CI/tooling
-warden review owner/repo 123 --verbose # also show each agent's own findings, not just the merged verdict
-warden doctor                          # run setup/health checks (GitHub token, OpenAI key, ChromaDB)
+git clone https://github.com/Amowixcode/pr-warden.git
+cd pr-warden
+uv sync
+cp .env.example .env   # add GITHUB_TOKEN and OPENAI_API_KEY
+
+uv run warden doctor
+uv run warden ingest facebook/react
+uv run warden review facebook/react 36897
 ```
 
-## How a review works
+## CLI
 
-1. `warden ingest` pulls issues, merged PRs, and commits from GitHub and embeds them into
-   ChromaDB. It persists the last-ingested timestamp per repo (`./data/ingest_history.json` by
-   default); a later `warden ingest` of the same repo only fetches items created or updated
-   since that run — the existing dedup-on-insert check still applies regardless. Pass `--full`
-   to force a complete re-fetch.
-2. `warden review` fetches the target PR, retrieves related historical context, then runs three
-   specialist agents in parallel, each backed by its own OpenAI call:
-   - **Security** — hardcoded secrets/credentials, injection risks, unsafe deserialization,
-     authentication/authorization gaps, unsafe or vulnerable dependency usage.
-   - **Quality** — style and readability, maintainability, naming, unnecessary complexity,
-     adherence to project conventions (type hints, docstrings, async I/O).
-   - **Test coverage** — whether new or changed logic has corresponding tests, whether edge
-     cases are considered, whether existing tests were updated when the behavior they cover
-     changed.
+| Command | |
+|---|---|
+| `warden ingest owner/repo` | Index a repository. Only fetches what's new since the last run. |
+| `warden review owner/repo 123` | Review a pull request. |
+| `warden doctor` | Check that tokens and storage are configured. |
 
-   Each issue an agent reports must include a verbatim quote of the diff line(s) it's based
-   on; before the issue ever reaches you, a plain Python substring check confirms that quote
-   actually appears in the diff (not another LLM call) — issues that fail this check are
-   dropped and logged rather than shown, catching hallucinated claims the prompt's own
-   self-check instruction misses.
-3. A summarizer merges the three findings into one final verdict: `REQUEST_CHANGES` if any agent
-   flagged an issue, else `COMMENT` if any agent had a non-blocking issue, else `APPROVE`. A
-   non-empty merged issues list can never carry an `APPROVE` verdict (minimum `COMMENT`), and
-   symmetrically a `REQUEST_CHANGES` verdict requires at least one surviving issue — if evidence
-   verification strips every issue an agent reported, it degrades to `COMMENT` instead. Both are
-   enforced at merge time even if an individual agent's own verdict and issues list disagree.
+| Flag | |
+|---|---|
+| `--full` | Ignore history and start over |
+| `--verbose` | Show each agent's findings, not just the merged verdict |
+| `--json` | Machine-readable output |
 
-## Output format
-
-`warden review` prints a **Final Verdict** section — the merged verdict, issues, and
-suggestions for the PR as a whole. By default that's the only section shown, so the same
-findings aren't printed twice; pass `--verbose` to also show a **Per-Agent Findings** section
-(one panel per agent, with its own verdict, issues, and suggestions) above it. Pass `--json` to
-print the full result (both levels) as a single JSON document on stdout instead (nothing else
-is printed, so it pipes cleanly into `jq` or other tooling) — `--json` output always includes
-the per-agent breakdown regardless of `--verbose`.
-
-`warden review` exits non-zero (`1`) when the final verdict is `REQUEST_CHANGES`, and `0` for
-`APPROVE`/`COMMENT` — so it can gate a CI step on the review outcome.
-
-## Incremental review
-
-`warden review` persists the last-reviewed commit SHA and verdict for each PR locally
-(`./data/review_history.json` by default). On a later review of the same PR, only the diff
-since that commit is sent to the agents — the prior verdict is passed along as context so
-agents can focus on what's new. If nothing has changed since the last review, no agents (and no
-OpenAI calls) run at all; the cached verdict is returned directly. Pass `--full` to always do a
-complete review, ignoring history.
+`warden review` exits with code 1 on REQUEST_CHANGES, so it can gate a CI step.
 
 ## Web app
 
-A hosted web UI sits on top of the same review engine, for people who'd rather click than
-type CLI commands:
+A React frontend on Vercel and a FastAPI backend on Render, sharing the same review engine as the CLI. Reviews and ingestion run as background jobs, so you can leave the page and come back.
 
-- **App**: https://pr-warden.vercel.app
-- **API**: https://pr-warden.onrender.com — interactive docs at
-  [pr-warden.onrender.com/docs](https://pr-warden.onrender.com/docs)
+Deployment, environment variables and endpoint access are covered in [DEPLOY.md](DEPLOY.md). The web API needs Supabase for job tracking: run [supabase/schema.sql](supabase/schema.sql) and set `SUPABASE_URL` and `SUPABASE_KEY`.
 
-The frontend (`frontend/`, React + Vite) has no key-input field — visitors never enter or see
-a credential. It has five sections, each calling the API below:
+## Stack
 
-| Section | Does |
-|---|---|
-| Home | Shows a real, bundled review on load — no request, no key, nothing to configure |
-| Review | Run pr-warden's agents against a pull request to get a security, quality, and test review with a final verdict |
-| PRs | Browse a repo's open pull requests and jump straight into reviewing one |
-| History | See past reviews pr-warden has run — click one for the full per-agent breakdown |
-| Ingest | Index a repo's issues, commits, and merged PRs into the vector store |
+Python, LangGraph, LlamaIndex, ChromaDB, OpenAI, FastAPI, Supabase, React, TypeScript, Vite.
 
-### API endpoints
+## Known limitations
 
-| Method | Path | Auth |
-|---|---|---|
-| `GET` | `/health` | none |
-| `GET` | `/health/deep` | API key, if `API_SHARED_KEY` is set |
-| `GET` | `/reviews` | none |
-| `GET` | `/reviews/{id}` | none |
-| `GET` | `/prs/{owner}/{repo}` | none |
-| `GET` | `/jobs/{id}` | none |
-| `POST` | `/review` | API key (if set) + repo allowlist + per-review rate limit |
-| `POST` | `/ingest` | none |
-
-`POST /review` and `POST /ingest` return `202` immediately with a job id — the review/ingest
-itself runs in the background and is polled via `GET /jobs/{id}` until it succeeds or fails.
-`job_id` is a client-generated UUID sent in the request body, making creation idempotent: a
-retried or double-submitted POST with the same id hits the existing job instead of starting the
-work a second time. Job ids are opaque and unauthenticated by design, same reasoning as
-`GET /reviews/{id}`.
-
-The frontend's own `X-API-Key` value (`VITE_API_KEY`, set at Vercel build time) is **not a
-security boundary** — a single-page app has to send it, so it's visible in any browser's
-network tab. It only deters opportunistic scanners; the actual protection for `/review` is the
-repo allowlist (`REVIEW_ALLOWED_REPOS`). See [`DEPLOY.md`](DEPLOY.md) for the full public/
-protected breakdown, how the API (Render) and frontend (Vercel) are deployed and wired
-together, and the cost controls that back `/review`.
-
-## Supabase setup
-
-Local JSON history (above) is all that's needed for the CLI's incremental caching, and remains
-optional for `warden review`/`warden ingest` — without `SUPABASE_URL`/`SUPABASE_KEY` set, the
-CLI works exactly as before, Supabase writes are skipped, and `GET /reviews` returns `[]`.
-
-The web API is different: `POST /review` and `POST /ingest` track their background jobs in
-Supabase's `jobs` table (see the endpoint table above) — there's no local-file fallback for
-that, since a job has to be readable by `GET /jobs/{id}` from a separate request. **Supabase is
-required for the API's `/review` and `/ingest` endpoints**; without it configured, they return a
-clear `5xx` rather than silently running synchronously.
-
-1. Run [`supabase/schema.sql`](supabase/schema.sql) in your Supabase project's SQL editor —
-   it creates the `reviews`, `ingests`, and `jobs` tables.
-2. Set `SUPABASE_URL` and `SUPABASE_KEY` in `.env`.
-
-## Known Limitations
-
-Accepted for now and tracked as open issues rather than blockers:
-
-- The frontend's `X-API-Key` (`VITE_API_KEY`) is baked into the JS bundle at build time and
-  sent on every request — not a real security boundary, just a deterrent against opportunistic
-  scanners. Real protection for `/review` is the server-side repo allowlist
-  (`REVIEW_ALLOWED_REPOS`), documented in [`DEPLOY.md`](DEPLOY.md).
-- The rate limit on `/review` is per-process, in-memory state — fine for this single-instance
-  deployment, but it resets on restart and isn't shared across replicas. The actual bound on
-  OpenAI spend is a hard monthly cap set on the OpenAI project itself, outside this repo.
-- The API runs on Render's free tier, which spins down after inactivity — the first request
-  after idle time is slower than the rest.
-- Review/ingest history is local JSON plus an optional Supabase mirror; there's no
-  multi-tenant or per-user isolation.
-- OpenAI is the only supported LLM/embedding provider.
+- The frontend's API key ships in the JavaScript bundle, so it isn't a security boundary. `/review` is protected by a repo allowlist and a rate limit instead.
+- The rate limit is held in memory and resets on restart.
+- OpenAI budgets only send alerts. They don't stop requests, so spend is bounded by the allowlist and rate limit.
+- The first request after the API has been idle is slow.
+- All indexed repositories share one vector store.
+- OpenAI is the only supported model provider.
