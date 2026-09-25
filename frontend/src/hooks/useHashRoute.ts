@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Route =
   | { view: "home" }
-  | { view: "section"; section: "history" | "prs" | "ingest" }
-  | { view: "review-form"; prefillRepo?: string; prefillPr?: number }
+  | { view: "section"; section: "history" | "prs" | "ingest"; jobId?: string }
+  | { view: "review-form"; prefillRepo?: string; prefillPr?: number; jobId?: string }
   | { view: "review-detail"; id: number };
 
 const HOME_ROUTE: Route = { view: "home" };
@@ -37,11 +37,14 @@ export function parseHash(hash: string): Route {
     const prefillRepo = params.get("repo") ?? undefined;
     const prRaw = params.get("pr");
     const prefillPr = prRaw && /^\d+$/.test(prRaw) ? Number(prRaw) : undefined;
-    return { view: "review-form", prefillRepo, prefillPr };
+    const jobId = params.get("job") ?? undefined;
+    return { view: "review-form", prefillRepo, prefillPr, jobId };
   }
 
   if (segments[0] === "history" || segments[0] === "prs" || segments[0] === "ingest") {
-    return { view: "section", section: segments[0] };
+    const params = new URLSearchParams(query ?? "");
+    const jobId = params.get("job") ?? undefined;
+    return { view: "section", section: segments[0], jobId };
   }
 
   return HOME_ROUTE;

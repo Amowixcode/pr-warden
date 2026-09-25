@@ -20,6 +20,7 @@ from api.rate_limiter import check_review_rate_limit
 from api.routes.health import router as health_router
 from api.routes.history import router as history_router
 from api.routes.ingest import router as ingest_router
+from api.routes.jobs import router as jobs_router
 from api.routes.prs import router as prs_router
 from api.routes.review import router as review_router
 from api.routes.review_detail import router as review_detail_router
@@ -106,6 +107,7 @@ app.include_router(history_router)
 app.include_router(prs_router)
 app.include_router(health_router)
 app.include_router(review_detail_router)
+app.include_router(jobs_router)
 
 
 @app.exception_handler(ValidationError)

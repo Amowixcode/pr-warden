@@ -13,11 +13,13 @@ _ALLOW_HEADERS = "Content-Type, X-API-Key"
 
 
 class AllowedOriginMiddleware(BaseHTTPMiddleware):
-    """CORS enforcement for exactly one configurable origin, not a wildcard.
+    """CORS enforcement for a configurable allowlist of origins, not a wildcard.
 
-    Reads settings.allowed_origin fresh on every request (rather than baking an origin list in
-    at app-construction time, like Starlette's own CORSMiddleware) so it stays consistent with
-    require_api_key's "read live settings" pattern and is monkeypatchable per-test.
+    Reads settings.allowed_origins_set fresh on every request (rather than baking an origin
+    list in at app-construction time, like Starlette's own CORSMiddleware) so it stays
+    consistent with require_api_key's "read live settings" pattern and is monkeypatchable per
+    test. Supports multiple origins (e.g. a production frontend plus per-branch Vercel preview
+    URLs) since a single exact-match origin can't cover those.
     """
 
     async def dispatch(
@@ -30,7 +32,7 @@ class AllowedOriginMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         settings = get_settings()
-        allowed = origin == settings.allowed_origin and settings.allowed_origin is not None
+        allowed = origin in settings.allowed_origins_set
 
         if request.method == "OPTIONS":
             if not allowed:
@@ -42,10 +44,18 @@ class AllowedOriginMiddleware(BaseHTTPMiddleware):
                     "Access-Control-Allow-Methods": _ALLOW_METHODS,
                     "Access-Control-Allow-Headers": _ALLOW_HEADERS,
                     "Access-Control-Allow-Credentials": "true",
+                    # Cloudflare sits in front of Render and can cache a response keyed only on
+                    # URL — without this, one origin's preflight could be served back to a
+                    # different origin from cache.
+                    "Vary": "Origin",
                 },
             )
 
         response = await call_next(request)
+        # Same Cloudflare-caching reasoning as above, applied to every non-preflight response
+        # this middleware sees (including error responses from _ExternalApiErrorMiddleware,
+        # which this middleware wraps — see its ordering comment in api/main.py).
+        response.headers["Vary"] = "Origin"
         if allowed:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     supabase_key: str | None = None
 
     api_shared_key: str | None = None
-    allowed_origin: str | None = None
+    allowed_origins: str | None = None
     review_rate_limit_max_calls: int = 20
     review_rate_limit_window_seconds: int = 3600
     review_allowed_repos: str | None = None
@@ -49,6 +49,25 @@ class Settings(BaseSettings):
         if isinstance(v, str) and not v.strip():
             return cls.model_fields[info.field_name].default
         return v
+
+    @property
+    def allowed_origins_set(self) -> frozenset[str]:
+        """Parsed, normalized view of allowed_origins for AllowedOriginMiddleware.
+
+        Recomputed on every access rather than cached on the instance, so tests can keep
+        monkeypatching the raw allowed_origins string on the get_settings() singleton — the
+        same "read live settings" pattern used everywhere else in this class. A trailing slash
+        is stripped from each configured origin since it's easy to paste one in by accident,
+        and a browser's Origin header itself never has one — an un-stripped trailing slash in
+        config would otherwise silently fail to match every real request.
+        """
+        if not self.allowed_origins:
+            return frozenset()
+        return frozenset(
+            origin.strip().rstrip("/")
+            for origin in self.allowed_origins.split(",")
+            if origin.strip()
+        )
 
 
 @lru_cache(maxsize=1)

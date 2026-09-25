@@ -39,6 +39,23 @@ describe("parseHash", () => {
     expect(parseHash("#/ingest")).toEqual({ view: "section", section: "ingest" });
   });
 
+  it("parses a review-form route with a job id, alongside the prefill params", () => {
+    expect(parseHash("#/review?repo=facebook%2Freact&pr=123&job=abc-123")).toEqual({
+      view: "review-form",
+      prefillRepo: "facebook/react",
+      prefillPr: 123,
+      jobId: "abc-123",
+    });
+  });
+
+  it("parses an ingest section route with a job id, so a refresh resumes it", () => {
+    expect(parseHash("#/ingest?job=abc-123")).toEqual({
+      view: "section",
+      section: "ingest",
+      jobId: "abc-123",
+    });
+  });
+
   it("falls back to home for anything unrecognized — never a dead route", () => {
     expect(parseHash("#/nonsense")).toEqual({ view: "home" });
     expect(parseHash("#/review/not-a-number")).toEqual({

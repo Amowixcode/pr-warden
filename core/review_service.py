@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -50,7 +51,13 @@ def _to_persisted(result: AgentResult) -> PersistedAgentResult:
     )
 
 
-async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -> ReviewResult:
+async def review_pr(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    full: bool = False,
+    on_stage: Callable[[str], Awaitable[None]] | None = None,
+) -> ReviewResult:
     """Fetch a PR, retrieve historical context, and produce a structured review.
 
     Runs the security/quality/test -> summarizer multi-agent graph (agents/graph.py) rather
@@ -67,12 +74,19 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
         repo: Repository name.
         pr_number: Pull request number to review.
         full: Force a complete review, ignoring any prior review history.
+        on_stage: Optional async callback invoked with a short human-readable label (e.g.
+            "running review agents") as each phase starts — how a background job reports what
+            it's doing without a percentage that would have to be invented. Not called on the
+            cached short-circuit path, which returns near-instantly. Never called for direct/
+            CLI callers, which pass nothing.
 
     Returns:
         A ReviewResult with summary, verdict, issues, and suggestions.
     """
     settings = get_settings()
     client = GitHubClient(settings.github_token, max_retries=settings.github_max_retries)
+    if on_stage:
+        await on_stage("fetching pull request")
     pr = await fetch_pull_request(client, owner, repo, pr_number)
 
     prior_record = None if full else load_review_record(owner, repo, pr_number)
@@ -103,6 +117,8 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
         )
         pr = pr.model_copy(update={"diff": incremental_diff})
 
+    if on_stage:
+        await on_stage("retrieving context")
     collection = build_chroma_collection()
     embed_model = get_embed_model()
     index = build_vector_store_index(collection, embed_model)
@@ -111,6 +127,8 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
         pr, index, owner, repo, linked_issues=linked_issues, prior_review=prior_record
     )
 
+    if on_stage:
+        await on_stage("running review agents")
     initial_state: ReviewState = {
         "pr": pr,
         "context": context,
@@ -125,6 +143,8 @@ async def review_pr(owner: str, repo: str, pr_number: int, full: bool = False) -
     quality_result = final_state["quality_result"]
     test_result = final_state["test_result"]
 
+    if on_stage:
+        await on_stage("saving results")
     record = ReviewRecord(
         head_sha=pr.head_sha,
         verdict=final.verdict,
