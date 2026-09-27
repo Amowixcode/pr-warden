@@ -22,6 +22,15 @@ export class ApiError extends Error {
   }
 }
 
+/** Thrown when fetch() itself fails — network down, or a Render free-tier instance still
+ * waking up and refusing the connection — as opposed to ApiError, which means the server
+ * responded but with a non-2xx status. */
+export class NetworkError extends Error {
+  constructor() {
+    super("Can't reach the server. It may be waking up, try again in a moment.");
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
@@ -29,7 +38,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set("X-API-Key", API_KEY);
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new NetworkError();
+  }
 
   if (!response.ok) {
     let detail = response.statusText || `Request failed (${response.status})`;

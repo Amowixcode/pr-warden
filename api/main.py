@@ -24,6 +24,7 @@ from api.routes.jobs import router as jobs_router
 from api.routes.prs import router as prs_router
 from api.routes.review import router as review_router
 from api.routes.review_detail import router as review_detail_router
+from core.errors import user_message
 from core.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
@@ -74,18 +75,20 @@ class _ExternalApiErrorMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             module = type(exc).__module__
 
+            repo = None
+            if "owner" in request.path_params and "repo" in request.path_params:
+                repo = f"{request.path_params['owner']}/{request.path_params['repo']}"
+
             if module.startswith("github"):
-                data = getattr(exc, "data", None)
-                detail = data.get("message", str(exc)) if isinstance(data, dict) else str(exc)
                 status = getattr(exc, "status", None)
                 if not isinstance(status, int) or not (400 <= status <= 599):
                     status = 502
                 return JSONResponse(
-                    status_code=status, content={"detail": f"GitHub API error: {detail}"}
+                    status_code=status, content={"detail": user_message(exc, repo=repo)}
                 )
 
             if module.startswith("openai"):
-                return JSONResponse(status_code=502, content={"detail": f"OpenAI API error: {exc}"})
+                return JSONResponse(status_code=502, content={"detail": user_message(exc)})
 
             raise
 
@@ -132,4 +135,4 @@ app.add_exception_handler(KeyError, _malformed_ai_response_handler)
 
 @app.exception_handler(Exception)
 async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"detail": f"unexpected error: {exc}"})
+    return JSONResponse(status_code=500, content={"detail": user_message(exc)})

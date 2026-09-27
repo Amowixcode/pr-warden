@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
 from github import GithubException
 
 from gh.client import GitHubClient
+from gh.exceptions import PRNotFoundError, RepoNotFoundError
 from gh.pr_fetcher import (
     OpenPRData,
     PRData,
@@ -149,6 +151,31 @@ async def test_fetch_pull_request_returns_correct_prdata() -> None:
 
     mock_client.get_repo.assert_called_once_with("owner", "repo")
     mock_client.get_repo.return_value.get_pull.assert_called_once_with(42)
+
+
+async def test_fetch_pull_request_repo_404_raises_repo_not_found_error() -> None:
+    client = MagicMock(spec=GitHubClient)
+    client.get_repo.side_effect = GithubException(404, {"message": "Not Found"}, None)
+
+    with pytest.raises(RepoNotFoundError):
+        await fetch_pull_request(client, "owner", "repo", 1)
+
+
+async def test_fetch_pull_request_pr_404_raises_pr_not_found_error() -> None:
+    mock_repo = MagicMock()
+    mock_repo.get_pull.side_effect = GithubException(404, {"message": "Not Found"}, None)
+    client = _make_mock_client_with_repo(mock_repo)
+
+    with pytest.raises(PRNotFoundError):
+        await fetch_pull_request(client, "owner", "repo", 1)
+
+
+async def test_fetch_pull_request_non_404_github_error_propagates_unchanged() -> None:
+    client = MagicMock(spec=GitHubClient)
+    client.get_repo.side_effect = GithubException(500, {"message": "boom"}, None)
+
+    with pytest.raises(GithubException):
+        await fetch_pull_request(client, "owner", "repo", 1)
 
 
 async def test_none_body_coerces_to_empty_string() -> None:

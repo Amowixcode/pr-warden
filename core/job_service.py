@@ -6,6 +6,7 @@ import uuid
 from dataclasses import asdict
 
 from core import supabase_jobs
+from core.errors import user_message
 from core.ingest_service import ingest_repository
 from core.review_service import review_pr
 
@@ -29,7 +30,8 @@ async def start_review_job(
         result = await review_pr(owner, repo, pr_number, full=full, on_stage=on_stage)
     except Exception as exc:
         logger.exception("Review job %s failed", job_id)
-        await asyncio.to_thread(supabase_jobs.update_job, job_id, status="failed", error=str(exc))
+        message = user_message(exc, repo=f"{owner}/{repo}", pr_number=pr_number)
+        await asyncio.to_thread(supabase_jobs.update_job, job_id, status="failed", error=message)
         return
     await asyncio.to_thread(
         supabase_jobs.update_job,
@@ -52,7 +54,8 @@ async def start_ingest_job(job_id: uuid.UUID, owner: str, repo: str, full: bool)
         result = await ingest_repository(owner, repo, full=full, on_stage=on_stage)
     except Exception as exc:
         logger.exception("Ingest job %s failed", job_id)
-        await asyncio.to_thread(supabase_jobs.update_job, job_id, status="failed", error=str(exc))
+        message = user_message(exc, repo=f"{owner}/{repo}")
+        await asyncio.to_thread(supabase_jobs.update_job, job_id, status="failed", error=message)
         return
     await asyncio.to_thread(
         supabase_jobs.update_job,

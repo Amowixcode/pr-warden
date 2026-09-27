@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from github import GithubException
 
 from agents.state import AgentResult
 from api import rate_limiter
@@ -552,6 +553,25 @@ def test_prs_endpoint_never_requires_api_key(monkeypatch: pytest.MonkeyPatch) ->
     response = client.get("/prs/octocat/Hello-World")
 
     assert response.status_code == 200
+
+
+def test_prs_endpoint_repo_not_found_returns_friendly_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 404 from GitHub must surface as a short, safe sentence — not the raw
+    ``{"message": "Not Found", ...}`` body PyGithub raises.
+    """
+    monkeypatch.setattr(
+        "api.routes.prs.list_open_prs",
+        AsyncMock(side_effect=GithubException(404, {"message": "Not Found"}, None)),
+    )
+
+    response = client.get("/prs/octocat/Hello-World")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Repository 'octocat/Hello-World' was not found. Check the spelling, or it may be private."
+    )
 
 
 # ── Review detail ────────────────────────────────────────────────────────────

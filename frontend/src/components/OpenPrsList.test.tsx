@@ -27,4 +27,34 @@ describe("OpenPrsList", () => {
     await user.click(screen.getByRole("button", { name: "Review" }));
     expect(onReview).toHaveBeenCalledWith("octocat/Hello-World", 12);
   });
+
+  it("rejects an invalid repo format without calling the API", async () => {
+    const listOpenPrs = vi.spyOn(client, "listOpenPrs");
+    const user = userEvent.setup();
+
+    render(<OpenPrsList onReview={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Repository"), "not-a-valid-repo");
+    await user.click(screen.getByRole("button", { name: "List open PRs" }));
+
+    expect(listOpenPrs).not.toHaveBeenCalled();
+    expect(screen.getByText("Couldn't load open PRs")).toBeInTheDocument();
+    expect(screen.getByText("Expected 'owner/repo'.")).toBeInTheDocument();
+  });
+
+  it("shows a network-error message when the request itself fails to reach the server", async () => {
+    vi.spyOn(client, "listOpenPrs").mockRejectedValue(new client.NetworkError());
+    const user = userEvent.setup();
+
+    render(<OpenPrsList onReview={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Repository"), "octocat/Hello-World");
+    await user.click(screen.getByRole("button", { name: "List open PRs" }));
+
+    expect(
+      await screen.findByText(
+        "Can't reach the server. It may be waking up, try again in a moment.",
+      ),
+    ).toBeInTheDocument();
+  });
 });

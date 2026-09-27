@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { ApiError, reviewPr } from "../api/client";
+import { ApiError, NetworkError, reviewPr } from "../api/client";
 import type { ReviewResponse } from "../api/types";
 import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
 import { useJobPolling } from "../hooks/useJobPolling";
+import { parseOwnerRepo } from "../lib/repoFormat";
+import { ErrorBox } from "./ErrorBox";
 import { JobStageBanner } from "./JobStageBanner";
 import { LoadingBanner } from "./LoadingBanner";
 import { ReviewResults } from "./ReviewResults";
@@ -34,12 +36,20 @@ export function ReviewForm({
         `#/review?repo=${encodeURIComponent(targetRepo)}&pr=${targetPr}&job=${newJobId}`,
       );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      setError(
+        err instanceof ApiError || err instanceof NetworkError
+          ? err.message
+          : "Something went wrong. Try again.",
+      );
     }
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!parseOwnerRepo(repo)) {
+      setError("Expected 'owner/repo'.");
+      return;
+    }
     void startJob(repo, Number(prNumber), false);
   }
 
@@ -82,12 +92,12 @@ export function ReviewForm({
 
       <LoadingBanner phase={phase} runningLabel="Starting the review" />
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && <ErrorBox title="Couldn't start the review" message={error} />}
 
       {jobId && job.status === "running" && <JobStageBanner stage={job.stage} />}
 
       {jobId && job.status === "failed" && (
-        <div className="error-banner">{job.error ?? "The review failed."}</div>
+        <ErrorBox title="Review failed" message={job.error ?? "The review failed."} />
       )}
 
       {jobId && job.status === "succeeded" && job.result && prefillRepo && (

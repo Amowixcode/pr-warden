@@ -85,12 +85,53 @@ describe("IngestForm", () => {
     expect(screen.getByText(/Indexed 3 issues, 2 merged PRs, and 10 commits/)).toBeInTheDocument();
   });
 
-  it("shows an error banner once the job fails", async () => {
-    vi.spyOn(client, "getJob").mockResolvedValue(_job({ status: "failed", error: "boom" }));
+  it("shows an error box with a title and message once the job fails", async () => {
+    vi.spyOn(client, "getJob").mockResolvedValue(
+      _job({
+        status: "failed",
+        error: "Repository 'octocat/Hello-World' was not found. Check the spelling, or it may be private.",
+      }),
+    );
 
     render(<IngestForm jobId="job-1" onNavigate={vi.fn()} />);
     await _flush();
 
-    expect(screen.getByText("boom")).toBeInTheDocument();
+    expect(screen.getByText("Ingest failed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Repository 'octocat/Hello-World' was not found. Check the spelling, or it may be private.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects an invalid repo format before submitting", async () => {
+    const ingestRepository = vi.spyOn(client, "ingestRepository");
+
+    render(<IngestForm onNavigate={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Repository"), {
+      target: { value: "not-a-valid-repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest" }));
+    await _flush();
+
+    expect(ingestRepository).not.toHaveBeenCalled();
+    expect(screen.getByText("Expected 'owner/repo'.")).toBeInTheDocument();
+  });
+
+  it("shows a network-error message when the request itself fails to reach the server", async () => {
+    vi.spyOn(client, "ingestRepository").mockRejectedValue(new client.NetworkError());
+
+    render(<IngestForm onNavigate={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Repository"), {
+      target: { value: "octocat/Hello-World" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ingest" }));
+    await _flush();
+
+    expect(
+      screen.getByText("Can't reach the server. It may be waking up, try again in a moment."),
+    ).toBeInTheDocument();
   });
 });

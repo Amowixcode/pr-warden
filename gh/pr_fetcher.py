@@ -9,6 +9,7 @@ from github import GithubException
 from pydantic import BaseModel, Field
 
 from gh.client import GitHubClient
+from gh.exceptions import PRNotFoundError, RepoNotFoundError
 from gh.repo_fetcher import CommitData, IssueData
 
 _LINKED_ISSUE_PATTERN = re.compile(r"\b(?:fixes|closes|resolves)\s+#(\d+)\b", re.IGNORECASE)
@@ -86,8 +87,18 @@ async def fetch_pull_request(
     """
 
     def _fetch_sync() -> PRData:
-        repo = client.get_repo(owner, name)
-        pr = repo.get_pull(pr_number)
+        try:
+            repo = client.get_repo(owner, name)
+        except GithubException as exc:
+            if exc.status == 404:
+                raise RepoNotFoundError from exc
+            raise
+        try:
+            pr = repo.get_pull(pr_number)
+        except GithubException as exc:
+            if exc.status == 404:
+                raise PRNotFoundError from exc
+            raise
         raw_files = list(pr.get_files())
         raw_commits = list(pr.get_commits())
 

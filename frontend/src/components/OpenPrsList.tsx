@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { ApiError, listOpenPrs } from "../api/client";
+import { ApiError, NetworkError, listOpenPrs } from "../api/client";
 import type { OpenPRResponse } from "../api/types";
 import { useHealthAwareLoading } from "../hooks/useHealthAwareLoading";
+import { parseOwnerRepo } from "../lib/repoFormat";
+import { ErrorBox } from "./ErrorBox";
 import { LoadingBanner } from "./LoadingBanner";
 
 export function OpenPrsList({
@@ -18,19 +20,24 @@ export function OpenPrsList({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parts = repo.split("/");
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    const parsed = parseOwnerRepo(repo);
+    if (!parsed) {
       setError("Expected 'owner/repo'.");
       return;
     }
+    const [owner, repoName] = parsed;
     setError(null);
     setPrs(null);
     try {
-      const data = await run(() => listOpenPrs(parts[0], parts[1]));
+      const data = await run(() => listOpenPrs(owner, repoName));
       setPrs(data);
-      setSubmittedRepo(`${parts[0]}/${parts[1]}`);
+      setSubmittedRepo(`${owner}/${repoName}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load open PRs.");
+      setError(
+        err instanceof ApiError || err instanceof NetworkError
+          ? err.message
+          : "Failed to load open PRs.",
+      );
     }
   }
 
@@ -55,7 +62,7 @@ export function OpenPrsList({
 
       <LoadingBanner phase={phase} runningLabel="Loading open PRs" />
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && <ErrorBox title="Couldn't load open PRs" message={error} />}
 
       {prs === null && !loading && !error && (
         <p className="api-key-note">Enter a repo to see its open PRs.</p>

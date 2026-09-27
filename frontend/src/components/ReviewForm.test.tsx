@@ -106,14 +106,50 @@ describe("ReviewForm", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an error banner once the job fails", async () => {
+  it("shows an error box with a title and message once the job fails", async () => {
     vi.spyOn(client, "getJob").mockResolvedValue(
-      _job({ status: "failed", error: "GitHub API error: Not Found" }),
+      _job({ status: "failed", error: "PR #7 does not exist in octocat/Hello-World." }),
     );
 
     render(<ReviewForm jobId="job-1" onNavigate={vi.fn()} />);
     await _flush();
 
-    expect(screen.getByText("GitHub API error: Not Found")).toBeInTheDocument();
+    expect(screen.getByText("Review failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("PR #7 does not exist in octocat/Hello-World."),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects an invalid repo format before submitting", async () => {
+    const reviewPr = vi.spyOn(client, "reviewPr");
+
+    render(<ReviewForm onNavigate={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Repository"), {
+      target: { value: "not-a-valid-repo" },
+    });
+    fireEvent.change(screen.getByLabelText("PR number"), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review PR" }));
+    await _flush();
+
+    expect(reviewPr).not.toHaveBeenCalled();
+    expect(screen.getByText("Expected 'owner/repo'.")).toBeInTheDocument();
+  });
+
+  it("shows a network-error message when the request itself fails to reach the server", async () => {
+    vi.spyOn(client, "reviewPr").mockRejectedValue(new client.NetworkError());
+
+    render(<ReviewForm onNavigate={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Repository"), {
+      target: { value: "octocat/Hello-World" },
+    });
+    fireEvent.change(screen.getByLabelText("PR number"), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review PR" }));
+    await _flush();
+
+    expect(
+      screen.getByText("Can't reach the server. It may be waking up, try again in a moment."),
+    ).toBeInTheDocument();
   });
 });

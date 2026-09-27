@@ -7,6 +7,7 @@ from agents.state import AgentResult
 from core.ingest_service import IngestResult
 from core.job_service import start_ingest_job, start_review_job
 from core.review_service import ReviewResult
+from gh.exceptions import PRNotFoundError, RepoNotFoundError
 
 _JOB_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
 _PATCH = "core.job_service.{}"
@@ -74,7 +75,21 @@ async def test_start_review_job_marks_failed_on_exception() -> None:
     ):
         await start_review_job(_JOB_ID, "owner", "repo", 7, full=False)
 
-    update_job.assert_called_once_with(_JOB_ID, status="failed", error="boom")
+    update_job.assert_called_once_with(
+        _JOB_ID, status="failed", error="Something went wrong. Try again."
+    )
+
+
+async def test_start_review_job_marks_failed_with_friendly_message_for_pr_not_found() -> None:
+    with (
+        patch(_PATCH.format("review_pr"), AsyncMock(side_effect=PRNotFoundError())),
+        patch(_PATCH.format("supabase_jobs.update_job"), MagicMock()) as update_job,
+    ):
+        await start_review_job(_JOB_ID, "owner", "repo", 7, full=False)
+
+    update_job.assert_called_once_with(
+        _JOB_ID, status="failed", error="PR #7 does not exist in owner/repo."
+    )
 
 
 # ── start_ingest_job ──────────────────────────────────────────────────────────
@@ -101,4 +116,20 @@ async def test_start_ingest_job_marks_failed_on_exception() -> None:
     ):
         await start_ingest_job(_JOB_ID, "owner", "repo", full=False)
 
-    update_job.assert_called_once_with(_JOB_ID, status="failed", error="boom")
+    update_job.assert_called_once_with(
+        _JOB_ID, status="failed", error="Something went wrong. Try again."
+    )
+
+
+async def test_start_ingest_job_marks_failed_with_friendly_message_for_repo_not_found() -> None:
+    with (
+        patch(_PATCH.format("ingest_repository"), AsyncMock(side_effect=RepoNotFoundError())),
+        patch(_PATCH.format("supabase_jobs.update_job"), MagicMock()) as update_job,
+    ):
+        await start_ingest_job(_JOB_ID, "owner", "repo", full=False)
+
+    update_job.assert_called_once_with(
+        _JOB_ID,
+        status="failed",
+        error="Repository 'owner/repo' was not found. Check the spelling, or it may be private.",
+    )
