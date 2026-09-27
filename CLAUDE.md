@@ -65,8 +65,32 @@ Claude Code must NEVER:
 - Use `Co-authored-by` or any commit attribution
 - Run `git merge` or `git rebase`
 
-The user writes all commit messages, stages files, and pushes.
+The user stages files, commits and pushes. Claude Code only suggests the message (see below).
 This is non-negotiable. The git history must be 100% the user's own work.
+
+## Commit message suggestion
+
+When an issue is done (all quality checks pass), end your final reply with a suggested
+commit message the user can copy. Do not commit it yourself.
+
+- Put it in a single fenced code block, nothing else inside the block
+- Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
+- Subject in imperative mood, lowercase after the prefix, max 72 characters, no period
+- Optional body after a blank line: 1 to 4 short bullets on what changed and why
+- Last line `Closes #N` when working on issue N
+- Write it like a human would: plain wording, no em dashes, no emojis
+- No `Co-authored-by`, no "Generated with Claude Code", no links or attribution of any kind
+
+Example:
+
+```
+fix: show readable error messages for failed jobs
+
+- map GitHub and OpenAI errors to short user-facing messages
+- stop leaking raw exception text into jobs.error
+
+Closes #135
+```
 
 ## Branch naming
 
