@@ -232,3 +232,5 @@ data/review_history.json
 # python -X importtime profiling captures
 importtime*.log
 
+
+data/

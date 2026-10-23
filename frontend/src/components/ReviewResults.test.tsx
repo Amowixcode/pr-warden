@@ -21,6 +21,8 @@ function _result(overrides: Partial<ReviewResponse> = {}): ReviewResponse {
     cached: false,
     prior_verdict: null,
     prior_head_sha: null,
+    status: "reviewed",
+    not_reviewed: [],
     ...overrides,
   };
 }
@@ -60,5 +62,41 @@ describe("ReviewResults", () => {
     fireEvent.click(button);
 
     expect(onRerun).toHaveBeenCalledOnce();
+  });
+
+  it("lists files that were not reviewed", () => {
+    render(
+      <ReviewResults
+        result={_result({ not_reviewed: ["logo.png", "dist/bundle.js"] })}
+        repo="octocat/Hello-World"
+      />,
+    );
+
+    expect(screen.getByText("Not reviewed: logo.png, dist/bundle.js")).toBeInTheDocument();
+  });
+
+  it("shows no Not reviewed line when every file was reviewed", () => {
+    render(<ReviewResults result={_result()} repo="octocat/Hello-World" />);
+
+    expect(screen.queryByText(/Not reviewed/)).not.toBeInTheDocument();
+  });
+
+  it("shows the nothing-new message without a Re-run button", () => {
+    render(
+      <ReviewResults
+        result={_result({
+          status: "nothing_new",
+          incremental: true,
+          summary: "Nothing new to review since abc1234.",
+          prior_verdict: "APPROVE",
+          prior_head_sha: "abc1234def",
+        })}
+        repo="octocat/Hello-World"
+        onRerun={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText("Nothing new to review since abc1234.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Re-run")).not.toBeInTheDocument();
   });
 });

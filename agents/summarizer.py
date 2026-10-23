@@ -9,24 +9,19 @@ _MAX_TOTAL_SUGGESTIONS = 3
 
 
 def _merge_verdict(verdicts: list[Verdict], has_issues: bool) -> Verdict:
-    """REQUEST_CHANGES if any agent flags it, else COMMENT if any has non-blocking issues.
+    """Merge the agents' verdicts, with surviving issues as the source of truth.
 
-    Also COMMENT (never APPROVE) when the merged issues list is non-empty, even if every
-    agent's own verdict said APPROVE — an agent's verdict and its own issues list aren't
-    always internally consistent (an agent can return APPROVE while still listing issues), so
-    this is enforced as a safety net at merge time rather than trusted from each agent.
-
-    Symmetrically, REQUEST_CHANGES requires at least one surviving issue: an agent can also set
-    that verdict before evidence verification strips every issue it reported, so REQUEST_CHANGES
-    with an empty merged issues list degrades to COMMENT rather than being trusted as-is.
-
-    Else (all APPROVE, no issues) -> APPROVE.
+    No surviving issues -> APPROVE, whatever any agent's own verdict says: a REQUEST_CHANGES or
+    COMMENT is only meaningful while verified issues back it (evidence verification may have
+    stripped them all). Otherwise REQUEST_CHANGES if any agent flags it, else COMMENT — also
+    when every agent said APPROVE but issues are listed, since an agent's verdict and its own
+    issues list aren't always internally consistent.
     """
+    if not has_issues:
+        return "APPROVE"
     if "REQUEST_CHANGES" in verdicts:
-        return "REQUEST_CHANGES" if has_issues else "COMMENT"
-    if "COMMENT" in verdicts or has_issues:
-        return "COMMENT"
-    return "APPROVE"
+        return "REQUEST_CHANGES"
+    return "COMMENT"
 
 
 def _interleave(lists: list[list[str]]) -> list[str]:
@@ -42,14 +37,22 @@ def _interleave(lists: list[list[str]]) -> list[str]:
     return merged
 
 
-def _synthesize_summary(verdict: Verdict, flagged_by: list[str], total_issues: int) -> str:
-    """A short synthesized sentence — never a concatenation of each agent's own summary."""
+def _synthesize_summary(
+    verdict: Verdict, flagged_by: list[str], total_issues: int, total_dropped: int = 0
+) -> str:
+    """A short synthesized sentence — never a concatenation of each agent's own summary.
+
+    Dropped findings (evidence verification rejected them) are mentioned only when there were any.
+    """
     if verdict == "APPROVE":
-        return "No blocking concerns from security, quality, or test coverage review."
-    if total_issues == 0:
-        return f"{verdict} — no findings survived evidence verification."
-    issue_word = "issue" if total_issues == 1 else "issues"
-    return f"{verdict} — {total_issues} {issue_word} flagged by {', '.join(flagged_by)}."
+        summary = "No blocking concerns from security, quality, or test coverage review."
+    else:
+        issue_word = "issue" if total_issues == 1 else "issues"
+        summary = f"{verdict} — {total_issues} {issue_word} flagged by {', '.join(flagged_by)}."
+    if total_dropped:
+        finding_word = "finding" if total_dropped == 1 else "findings"
+        summary += f" {total_dropped} {finding_word} discarded: evidence not found in the diff."
+    return summary
 
 
 def summarizer(state: ReviewState) -> dict[str, AgentResult]:
@@ -80,10 +83,11 @@ def summarizer(state: ReviewState) -> dict[str, AgentResult]:
     merged_issues = _interleave([result.issues for _, result in named_results])
     merged_suggestions = _interleave([result.suggestions for _, result in named_results])
     flagged_by = [name for name, result in named_results if result.issues]
+    total_dropped = sum(len(result.dropped_issues) for _, result in named_results)
 
     return {
         "final_verdict": AgentResult(
-            summary=_synthesize_summary(verdict, flagged_by, total_issues),
+            summary=_synthesize_summary(verdict, flagged_by, total_issues, total_dropped),
             verdict=verdict,
             issues=merged_issues[:_MAX_TOTAL_ISSUES],
             suggestions=merged_suggestions[:_MAX_TOTAL_SUGGESTIONS],

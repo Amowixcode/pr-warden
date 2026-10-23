@@ -35,10 +35,42 @@ def save_review(owner: str, repo: str, pr_number: int, record: ReviewRecord) -> 
                 "summary": record.summary,
                 "issues": record.issues,
                 "suggestions": record.suggestions,
+                "pipeline_version": record.pipeline_version,
+                "record": record.model_dump(mode="json"),
             }
         ).execute()
     except Exception:
         logger.warning("Failed to write review history to Supabase", exc_info=True)
+
+
+def load_latest_review_record(owner: str, repo: str, pr_number: int) -> ReviewRecord | None:
+    """Return the most recent full ReviewRecord saved for a PR, or None.
+
+    This is the review cache's source of truth when Supabase is configured, so it survives
+    deploys that wipe the local JSON. Rows written before the `record` column existed (null)
+    are skipped. Never raises — an outage, a missing column, or an unparseable row all degrade
+    to None, and the caller falls back to the local JSON store.
+    """
+    client = get_supabase_client()
+    if client is None:
+        return None
+    from retrieval.context_builder import ReviewRecord  # runtime import: TYPE_CHECKING above
+
+    try:
+        response = (
+            client.table(_REVIEWS_TABLE)
+            .select("record")
+            .eq("repo", f"{owner}/{repo}")
+            .eq("pr_number", pr_number)
+            .not_.is_("record", "null")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return ReviewRecord.model_validate(response.data[0]["record"]) if response.data else None
+    except Exception:
+        logger.warning("Failed to load review record from Supabase", exc_info=True)
+        return None
 
 
 def save_ingest(owner: str, repo: str, result: IngestResult, last_ingested_at: datetime) -> None:

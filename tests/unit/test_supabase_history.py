@@ -24,6 +24,7 @@ def _review_record(head_sha: str = "abc123") -> ReviewRecord:
         quality_result=agent,
         test_result=agent,
         reviewed_at=_NOW,
+        pipeline_version="2",
     )
 
 
@@ -54,6 +55,8 @@ def test_save_review_inserts_expected_row(monkeypatch: pytest.MonkeyPatch) -> No
             "summary": "Looks good",
             "issues": ["bug A"],
             "suggestions": ["do X"],
+            "pipeline_version": "2",
+            "record": _review_record(head_sha="deadbeef").model_dump(mode="json"),
         }
     )
     insert_call.return_value.execute.assert_called_once_with()
@@ -172,3 +175,54 @@ def test_get_review_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
 
     assert supabase_history.get_review(1) is None
+
+
+def _record_query(mock_client: MagicMock) -> MagicMock:
+    """The mock at the end of load_latest_review_record's select/eq/eq/not/order/limit chain."""
+    chain = mock_client.table.return_value.select.return_value
+    chain = chain.eq.return_value.eq.return_value.not_.is_.return_value
+    return chain.order.return_value.limit.return_value
+
+
+def test_load_latest_review_record_returns_none_when_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: None)
+
+    assert supabase_history.load_latest_review_record("octocat", "Hello-World", 7) is None
+
+
+def test_load_latest_review_record_round_trips_the_saved_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved = _review_record(head_sha="deadbeef")
+    mock_client = MagicMock()
+    _record_query(mock_client).execute.return_value.data = [
+        {"record": saved.model_dump(mode="json")}
+    ]
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    loaded = supabase_history.load_latest_review_record("octocat", "Hello-World", 7)
+
+    assert loaded == saved
+    select = mock_client.table.return_value.select
+    select.return_value.eq.assert_called_once_with("repo", "octocat/Hello-World")
+    select.return_value.eq.return_value.eq.assert_called_once_with("pr_number", 7)
+
+
+def test_load_latest_review_record_returns_none_when_no_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_client = MagicMock()
+    _record_query(mock_client).execute.return_value.data = []
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    assert supabase_history.load_latest_review_record("octocat", "Hello-World", 7) is None
+
+
+def test_load_latest_review_record_swallows_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_client = MagicMock()
+    _record_query(mock_client).execute.side_effect = RuntimeError("down")
+    monkeypatch.setattr("core.supabase_history.get_supabase_client", lambda: mock_client)
+
+    assert supabase_history.load_latest_review_record("octocat", "Hello-World", 7) is None

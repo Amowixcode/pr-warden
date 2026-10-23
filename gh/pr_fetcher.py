@@ -40,6 +40,7 @@ class PRData(BaseModel):
     diff: str
     commits: list[CommitData] = Field(default_factory=list)
     head_sha: str = ""
+    unreviewed_files: list[str] = Field(default_factory=list)
 
 
 def _build_diff(pr_files: list[PRFile]) -> str:
@@ -60,6 +61,14 @@ def _build_diff(pr_files: list[PRFile]) -> str:
             parts.append(f"diff --git a/{f.filename} b/{f.filename}")
             parts.append(f.patch)
     return "\n".join(parts)
+
+
+def unreviewed_files(pr_files: list[PRFile]) -> list[str]:
+    """Filenames _build_diff skips (``patch=None``: binary, or too large for GitHub to inline).
+
+    These never reach the agents, so the result surfaces them as "not reviewed".
+    """
+    return [f.filename for f in pr_files if f.patch is None]
 
 
 async def fetch_pull_request(
@@ -127,6 +136,7 @@ async def fetch_pull_request(
             diff=_build_diff(changed_files),
             commits=commits,
             head_sha=pr.head.sha,
+            unreviewed_files=unreviewed_files(changed_files),
         )
 
     return await asyncio.to_thread(_fetch_sync)
@@ -138,7 +148,7 @@ async def fetch_diff_since(
     name: str,
     base_sha: str,
     head_sha: str,
-) -> str:
+) -> tuple[str, list[str]]:
     """Diff between an arbitrary base SHA and head SHA, for incremental re-review.
 
     Unlike ``fetch_pull_request``'s diff (always base-branch-to-head), this pins to whatever
@@ -152,10 +162,11 @@ async def fetch_diff_since(
         head_sha: The PR's current HEAD commit SHA.
 
     Returns:
-        A diff string in the same format as ``PRData.diff``.
+        A ``(diff, unreviewed_files)`` tuple: the diff string in the same format as
+        ``PRData.diff``, and the files in the comparison that had no patch to include.
     """
 
-    def _fetch_sync() -> str:
+    def _fetch_sync() -> tuple[str, list[str]]:
         repo = client.get_repo(owner, name)
         comparison = repo.compare(base_sha, head_sha)
         files = [
@@ -168,7 +179,7 @@ async def fetch_diff_since(
             )
             for f in comparison.files
         ]
-        return _build_diff(files)
+        return _build_diff(files), unreviewed_files(files)
 
     return await asyncio.to_thread(_fetch_sync)
 
