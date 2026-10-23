@@ -1,6 +1,7 @@
 -- pr-warden Supabase schema: review/ingest history storage.
--- Additive to the local JSON caches (./data/review_history.json, ./data/ingest_history.json)
--- used for incremental review/ingest — this schema only backs GET /reviews and reporting.
+-- Backs GET /reviews and reporting, and (reviews.record) the review cache. The local JSON
+-- caches (./data/review_history.json, ./data/ingest_history.json) remain the fallback when
+-- Supabase isn't configured.
 --
 -- Run this in the Supabase SQL editor (or `psql`/`supabase db push`) once per project.
 
@@ -15,6 +16,12 @@ create table if not exists reviews (
     suggestions jsonb not null default '[]'::jsonb,
     created_at timestamptz not null default now()
 );
+
+-- Review cache (core/review_service.py): the full ReviewRecord and the pipeline version that
+-- produced it. Run these ALTERs before deploying code that writes them, or inserts will fail.
+-- Rows without `record` (written before this change) are simply ignored by the cache.
+alter table reviews add column if not exists pipeline_version text;
+alter table reviews add column if not exists record jsonb;
 
 create index if not exists reviews_repo_pr_number_idx on reviews (repo, pr_number);
 create index if not exists reviews_created_at_idx on reviews (created_at desc);

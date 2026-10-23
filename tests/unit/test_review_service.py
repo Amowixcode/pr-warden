@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from llama_index.core.schema import NodeWithScore, TextNode
 
 from agents.state import AgentResult
-from core.review_service import ReviewResult, review_pr
+from core.review_service import REVIEW_PIPELINE_VERSION, ReviewResult, review_pr
 from gh.pr_fetcher import PRData
 from retrieval.context_builder import PersistedAgentResult, PRContext, ReviewRecord
 
@@ -79,6 +79,7 @@ def _make_review_record(
     head_sha: str = "prior-head-sha",
     verdict: str = "COMMENT",
     summary: str = "Prior review summary",
+    pipeline_version: str = REVIEW_PIPELINE_VERSION,
 ) -> ReviewRecord:
     return ReviewRecord(
         head_sha=head_sha,
@@ -90,6 +91,7 @@ def _make_review_record(
         quality_result=_make_persisted("cached quality summary"),
         test_result=_make_persisted("cached test summary"),
         reviewed_at=_NOW,
+        pipeline_version=pipeline_version,
     )
 
 
@@ -105,6 +107,7 @@ _PATCH_TARGETS = {
     "get_embed_model": "get_embed_model",
     "graph_ainvoke": "graph.ainvoke",
     "GitHubClient": "GitHubClient",
+    "get_supabase_client": "get_supabase_client",
 }
 
 # core.supabase_history.save_review lives outside core.review_service's own module, so it can't
@@ -113,6 +116,7 @@ _PATCH_TARGETS = {
 # project whenever SUPABASE_URL/SUPABASE_KEY happen to be set in the environment running these
 # "unit" tests.
 _SUPABASE_SAVE_REVIEW_TARGET = "core.supabase_history.save_review"
+_SUPABASE_LOAD_RECORD_TARGET = "core.supabase_history.load_latest_review_record"
 
 
 def _make_patches(
@@ -121,7 +125,9 @@ def _make_patches(
     return {
         "fetch_pull_request": AsyncMock(return_value=pr),
         "fetch_linked_issues": AsyncMock(return_value=[]),
-        "fetch_diff_since": AsyncMock(return_value=""),
+        "fetch_diff_since": AsyncMock(return_value=("incremental-diff", [])),
+        "get_supabase_client": MagicMock(return_value=None),
+        "load_latest_review_record": MagicMock(return_value=None),
         "load_review_record": MagicMock(return_value=None),
         "save_review_record": MagicMock(),
         "build_pr_context": AsyncMock(return_value=context),
@@ -152,6 +158,7 @@ def _apply(mocks: dict) -> ExitStack:
     for key, target in _PATCH_TARGETS.items():
         stack.enter_context(patch(_PATCH.format(target), mocks[key]))
     stack.enter_context(patch(_SUPABASE_SAVE_REVIEW_TARGET, mocks["save_review_to_supabase"]))
+    stack.enter_context(patch(_SUPABASE_LOAD_RECORD_TARGET, mocks["load_latest_review_record"]))
     return stack
 
 
@@ -289,7 +296,7 @@ async def test_review_pr_second_review_is_incremental() -> None:
     mocks = _make_patches(pr, context)
     prior = _make_review_record(head_sha="old-sha", verdict="COMMENT", summary="Prior notes")
     mocks["load_review_record"] = MagicMock(return_value=prior)
-    mocks["fetch_diff_since"] = AsyncMock(return_value="only-the-new-commit-diff")
+    mocks["fetch_diff_since"] = AsyncMock(return_value=("only-the-new-commit-diff", []))
 
     with _apply(mocks):
         result = await review_pr("owner", "repo", 7)
@@ -328,6 +335,7 @@ async def test_review_pr_no_new_commits_returns_cached_result_without_calling_ag
     mocks["save_review_record"].assert_not_called()
 
     assert result.cached is True
+    assert result.status == "cached"
     assert result.incremental is True
     assert result.verdict == "APPROVE"
     assert result.summary == "All good"
@@ -418,3 +426,149 @@ async def test_review_pr_cached_result_only_reports_the_fetch_stage() -> None:
         await review_pr("owner", "repo", 7, on_stage=on_stage)
 
     assert seen == ["fetching pull request"]
+
+
+# ── pipeline version, Supabase cache, test files, nothing to review ──────────
+
+
+async def test_review_pr_cached_review_from_older_pipeline_version_is_not_reused() -> None:
+    """Same head_sha but a record from older logic: not replayed, not incremental — the agents
+    run on the full diff, so a fix to the pipeline actually reaches an already-reviewed PR.
+    """
+    pr = _make_pr(diff="full-pr-diff", head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    stale = _make_review_record(head_sha="same-sha", pipeline_version="1")
+    mocks["load_review_record"] = MagicMock(return_value=stale)
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    mocks["graph_ainvoke"].assert_awaited_once()
+    mocks["fetch_diff_since"].assert_not_called()
+    assert mocks["graph_ainvoke"].call_args.args[0]["pr"].diff == "full-pr-diff"
+    assert result.cached is False
+    assert result.incremental is False
+    saved = mocks["save_review_record"].call_args.args[3]
+    assert saved.pipeline_version == REVIEW_PIPELINE_VERSION
+
+
+async def test_review_pr_record_without_pipeline_version_is_not_reused() -> None:
+    pr = _make_pr(head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    mocks["load_review_record"] = MagicMock(
+        return_value=_make_review_record(head_sha="same-sha", pipeline_version="")
+    )
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    assert result.cached is False
+    mocks["graph_ainvoke"].assert_awaited_once()
+
+
+async def test_review_pr_reads_cache_from_supabase_when_configured() -> None:
+    pr = _make_pr(head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    mocks["get_supabase_client"] = MagicMock(return_value=MagicMock())
+    mocks["load_latest_review_record"] = MagicMock(
+        return_value=_make_review_record(head_sha="same-sha", summary="from supabase")
+    )
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    assert result.cached is True
+    assert result.summary == "from supabase"
+    mocks["load_review_record"].assert_not_called()
+    mocks["graph_ainvoke"].assert_not_called()
+
+
+async def test_review_pr_supabase_miss_falls_back_to_local_json() -> None:
+    pr = _make_pr(head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    mocks["get_supabase_client"] = MagicMock(return_value=MagicMock())
+    mocks["load_latest_review_record"] = MagicMock(return_value=None)
+    mocks["load_review_record"] = MagicMock(
+        return_value=_make_review_record(head_sha="same-sha", summary="from local json")
+    )
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    assert result.cached is True
+    assert result.summary == "from local json"
+
+
+async def test_review_pr_without_supabase_uses_local_json_only() -> None:
+    pr = _make_pr(head_sha="same-sha")
+    mocks = _make_patches(pr, _make_context())
+    mocks["load_review_record"] = MagicMock(
+        return_value=_make_review_record(head_sha="same-sha", summary="from local json")
+    )
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    mocks["load_latest_review_record"].assert_not_called()
+    assert result.summary == "from local json"
+
+
+async def test_review_pr_passes_test_files_in_diff_to_graph() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n+x\n"
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n+y\n"
+        "diff --git a/web/Button.test.tsx b/web/Button.test.tsx\n+z"
+    )
+    pr = _make_pr(diff=diff)
+    mocks = _make_patches(pr, _make_context())
+
+    with _apply(mocks):
+        await review_pr("owner", "repo", 7)
+
+    state = mocks["graph_ainvoke"].call_args.args[0]
+    assert state["test_files"] == ["tests/test_app.py", "web/Button.test.tsx"]
+
+
+async def test_review_pr_empty_incremental_diff_skips_openai() -> None:
+    pr = _make_pr(diff="full-pr-diff", head_sha="new-sha")
+    mocks = _make_patches(pr, _make_context())
+    prior = _make_review_record(head_sha="abcdef1234", verdict="APPROVE")
+    mocks["load_review_record"] = MagicMock(return_value=prior)
+    mocks["fetch_diff_since"] = AsyncMock(return_value=("", ["logo.png"]))
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    mocks["graph_ainvoke"].assert_not_called()
+    mocks["build_chroma_collection"].assert_not_called()
+    mocks["save_review_record"].assert_not_called()
+    assert result.status == "nothing_new"
+    assert result.summary == "Nothing new to review since abcdef1."
+    assert result.verdict == "APPROVE"
+    assert result.incremental is True
+    assert result.cached is False
+    assert result.not_reviewed == ["logo.png"]
+
+
+async def test_review_pr_empty_full_diff_returns_nothing_to_review() -> None:
+    pr = _make_pr(diff="").model_copy(update={"unreviewed_files": ["a.png"]})
+    mocks = _make_patches(pr, _make_context())
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    mocks["graph_ainvoke"].assert_not_called()
+    assert result.status == "nothing_new"
+    assert result.verdict == "APPROVE"
+    assert result.not_reviewed == ["a.png"]
+
+
+async def test_review_pr_reports_unreviewed_files_on_a_normal_review() -> None:
+    pr = _make_pr().model_copy(update={"unreviewed_files": ["big.json"]})
+    mocks = _make_patches(pr, _make_context())
+
+    with _apply(mocks):
+        result = await review_pr("owner", "repo", 7)
+
+    assert result.status == "reviewed"
+    assert result.not_reviewed == ["big.json"]

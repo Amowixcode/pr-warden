@@ -139,7 +139,10 @@ def _print_doctor_result(result: Any) -> None:
 
 
 def _print_review_result(result: Any, verbose: bool = False) -> None:
-    if result.cached:
+    if result.status == "nothing_new":
+        console.print(f"[bold cyan]{result.summary} No agents were run.[/bold cyan]")
+        console.print()
+    elif result.cached:
         console.print(
             f"[bold cyan]No new commits since last review "
             f"(commit {result.prior_head_sha[:7]}) — showing cached verdict.[/bold cyan]"
@@ -161,6 +164,8 @@ def _print_review_result(result: Any, verbose: bool = False) -> None:
 
     console.print("[bold underline]Final Verdict[/bold underline]")
     _print_agent_section(f"PR #{result.pr_number}", result)
+    if result.not_reviewed:
+        console.print(f"[yellow]Not reviewed: {', '.join(result.not_reviewed)}[/yellow]")
 
 
 def _print_review_result_json(result: Any) -> None:

@@ -1,12 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, TypedDict
+from dataclasses import dataclass, field
+from typing import Literal, NotRequired, TypedDict
 
 from gh.pr_fetcher import PRData
 from retrieval.context_builder import PRContext
 
 Verdict = Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
+
+
+@dataclass
+class DroppedIssue:
+    """A finding the model reported but evidence verification rejected.
+
+    reason is one of "malformed" (not an object), "no_evidence" (empty evidence), or
+    "not_in_diff" (evidence lines not found as consecutive lines within one file's diff).
+    """
+
+    issue: str
+    evidence: str
+    reason: str
 
 
 @dataclass
@@ -22,6 +35,7 @@ class AgentResult:
     verdict: Verdict
     issues: list[str]
     suggestions: list[str]
+    dropped_issues: list[DroppedIssue] = field(default_factory=list)
 
 
 class ReviewState(TypedDict):
@@ -44,3 +58,4 @@ class ReviewState(TypedDict):
     quality_result: AgentResult | None
     test_result: AgentResult | None
     final_verdict: AgentResult | None
+    test_files: NotRequired[list[str]]

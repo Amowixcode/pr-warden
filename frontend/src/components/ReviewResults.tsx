@@ -12,7 +12,10 @@ export function ReviewResults({
   onRerun?: () => void;
 }) {
   const tags = [];
-  if (result.cached) {
+  const notReviewed = result.not_reviewed ?? [];
+  if (result.status === "nothing_new") {
+    tags.push({ color: "ok" as const, label: "nothing new" });
+  } else if (result.cached) {
     tags.push({ color: "ok" as const, label: "cached" });
   } else if (result.incremental) {
     tags.push({ color: "ok" as const, label: "incremental" });
@@ -34,12 +37,16 @@ export function ReviewResults({
         tags={tags}
         onRerun={result.cached ? onRerun : undefined}
       />
+      {result.status === "nothing_new" && <p className="api-key-note">{result.summary}</p>}
+      {notReviewed.length > 0 && (
+        <p className="api-key-note">Not reviewed: {notReviewed.join(", ")}</p>
+      )}
       {result.cached && (
         <p className="api-key-note">
           No new commits since the last review — showing the cached verdict.
         </p>
       )}
-      {result.incremental && !result.cached && (
+      {result.incremental && !result.cached && result.status !== "nothing_new" && (
         <p className="api-key-note">Incremental review — prior verdict was {result.prior_verdict}.</p>
       )}
 

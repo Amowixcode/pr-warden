@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agents.state import AgentResult, ReviewState
+from agents.state import AgentResult, DroppedIssue, ReviewState
 from agents.summarizer import _merge_verdict, _synthesize_summary, summarizer
 from gh.pr_fetcher import PRData
 from retrieval.context_builder import PRContext
@@ -58,21 +58,23 @@ def test_merge_verdict_all_approve() -> None:
 
 
 def test_merge_verdict_one_requests_changes() -> None:
-    """REQUEST_CHANGES with no surviving issues degrades to COMMENT — the agent set that
-    verdict before evidence verification ran, and every issue backing it got dropped.
+    """REQUEST_CHANGES with no surviving issues is APPROVE — the agent set that verdict before
+    evidence verification ran, and every issue backing it got dropped.
     """
     verdicts = ["APPROVE", "REQUEST_CHANGES", "APPROVE"]
-    assert _merge_verdict(verdicts, has_issues=False) == "COMMENT"
+    assert _merge_verdict(verdicts, has_issues=False) == "APPROVE"
 
 
 def test_merge_verdict_one_comment_only() -> None:
-    assert _merge_verdict(["APPROVE", "COMMENT", "APPROVE"], has_issues=False) == "COMMENT"
+    assert _merge_verdict(["APPROVE", "COMMENT", "APPROVE"], has_issues=False) == "APPROVE"
+
+    assert _merge_verdict(["APPROVE", "COMMENT", "APPROVE"], has_issues=True) == "COMMENT"
 
 
 def test_merge_verdict_mixed_comment_and_request_changes() -> None:
-    """Same degrade rule applies even alongside another agent's COMMENT verdict."""
+    """Same rule applies even alongside another agent's COMMENT verdict."""
     verdicts = ["COMMENT", "REQUEST_CHANGES", "APPROVE"]
-    assert _merge_verdict(verdicts, has_issues=False) == "COMMENT"
+    assert _merge_verdict(verdicts, has_issues=False) == "APPROVE"
 
 
 def test_merge_verdict_mixed_comment_and_request_changes_with_issue() -> None:
@@ -84,11 +86,11 @@ def test_merge_verdict_mixed_comment_and_request_changes_with_issue() -> None:
 
 
 def test_merge_verdict_all_request_changes() -> None:
-    """Even when every agent says REQUEST_CHANGES, zero surviving issues still degrades to
-    COMMENT — the raw per-agent verdicts alone are never trusted over has_issues.
+    """Even when every agent says REQUEST_CHANGES, zero surviving issues is APPROVE — the raw
+    per-agent verdicts alone are never trusted over has_issues.
     """
     verdicts = ["REQUEST_CHANGES", "REQUEST_CHANGES", "REQUEST_CHANGES"]
-    assert _merge_verdict(verdicts, has_issues=False) == "COMMENT"
+    assert _merge_verdict(verdicts, has_issues=False) == "APPROVE"
 
 
 def test_merge_verdict_all_request_changes_with_issues() -> None:
@@ -97,7 +99,7 @@ def test_merge_verdict_all_request_changes_with_issues() -> None:
 
 
 def test_merge_verdict_all_comment() -> None:
-    assert _merge_verdict(["COMMENT", "COMMENT", "COMMENT"], has_issues=False) == "COMMENT"
+    assert _merge_verdict(["COMMENT", "COMMENT", "COMMENT"], has_issues=False) == "APPROVE"
 
 
 def test_merge_verdict_bumps_approve_to_comment_when_has_issues() -> None:
@@ -149,7 +151,7 @@ def test_summarizer_one_requests_changes_yields_request_changes() -> None:
     assert result.verdict == "REQUEST_CHANGES"
 
 
-def test_summarizer_one_comment_only_yields_comment() -> None:
+def test_summarizer_comment_without_issues_yields_approve() -> None:
     state = _make_state(
         _result(verdict="APPROVE"),
         _result(verdict="COMMENT", suggestions=["Add a docstring"]),
@@ -158,12 +160,13 @@ def test_summarizer_one_comment_only_yields_comment() -> None:
 
     result = summarizer(state)["final_verdict"]
 
-    assert result.verdict == "COMMENT"
+    assert result.verdict == "APPROVE"
+    assert result.suggestions == ["Add a docstring"]
 
 
-def test_summarizer_mixed_verdicts_no_issues_degrades_to_comment() -> None:
+def test_summarizer_mixed_verdicts_no_issues_yields_approve() -> None:
     """None of the three agents has any surviving issues, so even though one said
-    REQUEST_CHANGES, the merge degrades it to COMMENT.
+    REQUEST_CHANGES, the merge is APPROVE.
     """
     state = _make_state(
         _result(verdict="COMMENT"),
@@ -173,7 +176,7 @@ def test_summarizer_mixed_verdicts_no_issues_degrades_to_comment() -> None:
 
     result = summarizer(state)["final_verdict"]
 
-    assert result.verdict == "COMMENT"
+    assert result.verdict == "APPROVE"
 
 
 def test_summarizer_mixed_verdicts_with_issue_yields_request_changes() -> None:
@@ -367,12 +370,11 @@ def test_summarizer_bumps_approve_to_comment_when_agent_has_issues() -> None:
     assert "Missing comment explaining the numeric check" in result.issues
 
 
-def test_summarizer_request_changes_with_no_surviving_issues_degrades_to_comment() -> None:
-    """Regression test for issue #124: an agent sets REQUEST_CHANGES before evidence
+def test_summarizer_request_changes_with_no_surviving_issues_yields_approve() -> None:
+    """Regression test for issues #124/#137: an agent sets REQUEST_CHANGES before evidence
     verification runs. If every finding it reported fails verification, the per-agent issues
-    list ends up empty — but the merge layer must not trust the stale REQUEST_CHANGES verdict
-    that was set before that filtering happened. The final verdict must degrade to COMMENT with
-    no issues, not tell the user to fix something while showing them nothing to fix.
+    list ends up empty — the merge layer must not trust the stale REQUEST_CHANGES verdict.
+    With nothing to fix the final verdict is APPROVE, not a verdict that points at nothing.
     """
     state = _make_state(
         _result(verdict="REQUEST_CHANGES", issues=[]),
@@ -382,15 +384,30 @@ def test_summarizer_request_changes_with_no_surviving_issues_degrades_to_comment
 
     result = summarizer(state)["final_verdict"]
 
-    assert result.verdict == "COMMENT"
+    assert result.verdict == "APPROVE"
     assert result.issues == []
 
 
-def test_synthesize_summary_no_issues_survived_has_no_dangling_period() -> None:
-    """Regression test for issue #124: when nothing survived verification, flagged_by is empty
-    and the old format string produced 'COMMENT — 0 issues flagged by .' — a dangling period.
-    """
-    summary = _synthesize_summary("COMMENT", [], 0)
+def test_synthesize_summary_has_no_dropped_mention_when_nothing_dropped() -> None:
+    summary = _synthesize_summary("APPROVE", [], 0, 0)
 
-    assert "flagged by ." not in summary
-    assert summary == "COMMENT — no findings survived evidence verification."
+    assert summary == "No blocking concerns from security, quality, or test coverage review."
+
+
+def test_synthesize_summary_mentions_dropped_findings_only_when_some_dropped() -> None:
+    assert _synthesize_summary("APPROVE", [], 0, 1).endswith(
+        "1 finding discarded: evidence not found in the diff."
+    )
+    assert "3 findings discarded" in _synthesize_summary("COMMENT", ["quality"], 1, 3)
+
+
+def test_summarizer_counts_dropped_issues_across_agents() -> None:
+    dropped = DroppedIssue(issue="x", evidence="y", reason="not_in_diff")
+    test_result = _result(verdict="REQUEST_CHANGES")
+    test_result.dropped_issues = [dropped, dropped]
+    state = _make_state(_result(), _result(), test_result)
+
+    result = summarizer(state)["final_verdict"]
+
+    assert result.verdict == "APPROVE"
+    assert "2 findings discarded" in result.summary

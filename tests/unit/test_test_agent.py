@@ -345,10 +345,10 @@ def test_parse_response_drops_issue_with_fabricated_evidence() -> None:
     assert result.issues == []
 
 
-def test_parse_response_downgrades_verdict_when_all_issues_fail_verification() -> None:
+def test_parse_response_approves_when_all_issues_fail_verification() -> None:
     """Regression test for issue #124: the model sets REQUEST_CHANGES before evidence
     verification runs, so a REQUEST_CHANGES verdict backed only by fabricated evidence must be
-    downgraded to COMMENT once every issue is dropped — never surfaced with an empty issues list.
+    APPROVE once every issue is dropped — never surfaced with an empty issues list.
     """
     raw = json.dumps(
         {
@@ -364,8 +364,11 @@ def test_parse_response_downgrades_verdict_when_all_issues_fail_verification() -
         }
     )
     result = _parse_response(raw, _DEFAULT_DIFF)
-    assert result.verdict == "COMMENT"
+    assert result.verdict == "APPROVE"
     assert result.issues == []
+
+    assert len(result.dropped_issues) == 1
+    assert result.dropped_issues[0].reason == "not_in_diff"
 
 
 def test_parse_response_keeps_issue_with_verified_evidence() -> None:
@@ -495,3 +498,35 @@ def test_test_agent_drops_issues_with_evidence_not_in_diff() -> None:
         update = run_test_agent(state)
 
     assert update["test_result"].issues == []
+
+
+# ── test files fact ──────────────────────────────────────────────────────────
+
+
+def test_build_input_lists_test_files_as_a_fact() -> None:
+    prompt = _build_input(_make_pr(), _make_context(), ["tests/test_a.py", "web/B.test.tsx"])
+
+    assert "### Test files in this diff" in prompt
+    assert "- tests/test_a.py" in prompt
+    assert "- web/B.test.tsx" in prompt
+
+
+def test_build_input_says_no_test_files_when_none() -> None:
+    prompt = _build_input(_make_pr(), _make_context(), [])
+
+    assert "(none — the diff touches no test files)" in prompt
+
+
+def test_test_agent_sends_state_test_files_to_openai() -> None:
+    state = _make_state(_make_pr(), _make_context())
+    state["test_files"] = ["tests/test_client.py"]
+
+    with patch("agents.test_agent._call_openai", return_value=_VALID_JSON) as mock_call:
+        run_test_agent(state)
+
+    assert "- tests/test_client.py" in mock_call.call_args.args[0]
+
+
+def test_system_prompt_requires_evidence_from_the_untested_code() -> None:
+    assert "UNTESTED" in _SYSTEM_PROMPT
+    assert "Never quote the PR description" in _SYSTEM_PROMPT

@@ -21,13 +21,15 @@ flowchart LR
 
 ## Merge rules
 
-- REQUEST_CHANGES if any agent requested changes and at least one issue survived evidence verification
-- COMMENT if any agent commented, or if there are issues even though every agent approved
-- APPROVE only when all three approved and there are no issues
+- APPROVE when no issue survived evidence verification, whatever any agent's own verdict says
+- REQUEST_CHANGES if any agent requested changes and at least one issue survived
+- COMMENT otherwise, when issues survived but no agent requested changes
 - Issues and suggestions are interleaved across agents, then capped at 5 and 3, so one agent can't crowd out the others
 - The summary is built from a template, not taken from any agent
 
-The first rule exists because verification runs after an agent has picked its verdict. An agent can ask for changes and then have every finding dropped. Without the guard, that reaches the user as REQUEST_CHANGES with nothing to change.
+The first rule exists because verification runs after an agent has picked its verdict. An agent can ask for changes and then have every finding dropped. Without the guard, that reaches the user as REQUEST_CHANGES (or COMMENT) with nothing to change. Findings that were dropped are kept on `AgentResult.dropped_issues` and counted in the summary only when there were any.
+
+Evidence matching is line by line (`agents/evidence.py`): the `+`/`-`/space markers, `` and outer whitespace are ignored, blank lines are skipped, and every quoted line must appear consecutively within one file of the diff.
 
 ## Why there's no reducer
 
