@@ -1,11 +1,20 @@
 export type Verdict = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
 
+export interface DroppedIssue {
+  issue: string;
+  evidence: string;
+  reason: string;
+}
+
 export interface AgentResult {
   summary: string;
   verdict: Verdict;
   issues: string[];
   suggestions: string[];
+  dropped_issues?: DroppedIssue[];
 }
+
+export type ReviewStatus = "reviewed" | "cached" | "nothing_new";
 
 export interface ReviewResponse {
   pr_number: number;
@@ -20,6 +29,9 @@ export interface ReviewResponse {
   cached: boolean;
   prior_verdict: Verdict | null;
   prior_head_sha: string | null;
+  // Optional: results saved by an older backend (e.g. old job rows) don't have these.
+  status?: ReviewStatus;
+  not_reviewed?: string[];
 }
 
 export interface ReviewHistoryItem {

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import json
-import logging
 
 from llama_index.core.schema import NodeWithScore
 from openai import OpenAI
 
+from agents.evidence import verify_issues
 from agents.state import AgentResult, ReviewState
 from config.settings import get_settings
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import CommitData, IssueData
 from retrieval.context_builder import PRContext, ReviewRecord
-
-logger = logging.getLogger(__name__)
 
 _OPENAI_MODEL = "gpt-4.1-mini"
 _TEMPERATURE = 0
@@ -32,9 +30,15 @@ exact diff line(s) for that construct and confirm the claim is true. If you cann
 the specific line(s) that support the claim, drop it or soften it into a general observation \
 instead.
 
-Every issue must include an "evidence" field: the exact diff line(s) it refers to, copied \
-verbatim from the diff above — not paraphrased, not summarized. Issues whose evidence can't be \
-found verbatim in the diff are automatically discarded before you ever see the result, so a \
+The "Test files in this diff" section lists which changed files are tests. Treat it as a fact: \
+if it lists test files, do not claim tests are missing without pointing at what they fail to \
+cover; if it says there are none, the diff adds no tests.
+
+Every issue must include an "evidence" field: the exact diff line(s) of the UNTESTED code the \
+issue is about (the added or changed lines that lack coverage), copied verbatim from the diff \
+above — not paraphrased, not summarized. Never quote the PR description, and never try to \
+prove an absence of tests with a quote. Issues whose evidence can't be found verbatim in a \
+single file of the diff are automatically discarded before you ever see the result, so a \
 fabricated or paraphrased quote just wastes the finding — quote precisely or leave it out.
 
 Keep findings terse and bullet-style, never narrative paragraphs. Include a file and line \
@@ -85,8 +89,14 @@ don't re-flag concerns that apply equally to the unchanged prior code.
 """
 
 
-def _build_input(pr: PRData, context: PRContext) -> str:
-    """Build the test-adequacy-review input from PR data and retrieval context."""
+def _format_test_files(test_files: list[str]) -> str:
+    if not test_files:
+        return "(none — the diff touches no test files)"
+    return "\n".join(f"- {name}" for name in test_files)
+
+
+def _build_input(pr: PRData, context: PRContext, test_files: list[str] | None = None) -> str:
+    """Build the test-adequacy-review input from PR data, retrieval context and test files."""
     return f"""\
 ## Pull Request
 Title: {pr.title}
@@ -98,6 +108,9 @@ Branch: {pr.head_branch} → {pr.base_branch}
 
 ### Commit Messages
 {_format_commits(pr.commits)}
+
+### Test files in this diff
+{_format_test_files(test_files or [])}
 
 ### Diff
 {pr.diff}
@@ -132,54 +145,23 @@ def _call_openai(prompt: str) -> str:
     return response.output_text
 
 
-def _verify_issues(raw_issues: list, diff: str) -> list[str]:
-    """Keep only issues whose evidence is a verbatim substring of the diff.
-
-    Mechanical, non-LLM backstop to the prompt's own self-check clause — a plain string
-    containment check, not another model call. Each raw issue is expected to be
-    {"issue": ..., "evidence": ...}; anything that isn't a dict, or has no/empty evidence, or
-    whose evidence can't be found verbatim in the diff, is dropped and logged rather than
-    shown to the user (a real LLM won't always perfectly follow the schema, so this fails
-    closed instead of raising).
-    """
-    verified: list[str] = []
-    for raw_issue in raw_issues:
-        if not isinstance(raw_issue, dict):
-            logger.warning("Dropping malformed issue entry (not an object): %r", raw_issue)
-            continue
-        description = raw_issue.get("issue", "")
-        evidence = raw_issue.get("evidence", "")
-        if evidence and evidence.strip() in diff:
-            verified.append(description)
-        else:
-            logger.warning(
-                "Dropping unverifiable issue — evidence not found verbatim in diff: "
-                "issue=%r evidence=%r",
-                description,
-                evidence,
-            )
-    return verified
-
-
 def _parse_response(text: str, diff: str) -> AgentResult:
     """Parse OpenAI response text into an AgentResult, stripping code fences if present.
 
     Each issue's evidence is mechanically verified against diff before being kept — see
-    _verify_issues. If every issue gets dropped, a REQUEST_CHANGES verdict is downgraded to
-    COMMENT — the model set that verdict before verification ran, so it can't be trusted once
-    the issues backing it are gone.
+    agents.evidence.verify_issues. With zero verified issues the verdict is APPROVE, whatever
+    the model said: its REQUEST_CHANGES/COMMENT was based on issues that no longer stand.
+    Rejected findings are kept on AgentResult.dropped_issues.
     """
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data = json.loads(text)
-    verdict = data["verdict"]
-    issues = _verify_issues(data.get("issues", []), diff)
-    if verdict == "REQUEST_CHANGES" and not issues:
-        verdict = "COMMENT"
+    issues, dropped = verify_issues(data.get("issues", []), diff)
     return AgentResult(
         summary=data["summary"],
-        verdict=verdict,
+        verdict=data["verdict"] if issues else "APPROVE",
         issues=issues,
         suggestions=data.get("suggestions", []),
+        dropped_issues=dropped,
     )
 
 
@@ -191,6 +173,6 @@ def test_agent(state: ReviewState) -> dict[str, AgentResult]:
     agents/README.md. Errors (OpenAIError, json.JSONDecodeError, KeyError) propagate un-wrapped,
     the same convention core/review_service.py::review_pr already follows.
     """
-    prompt = _build_input(state["pr"], state["context"])
+    prompt = _build_input(state["pr"], state["context"], state.get("test_files", []))
     response_text = _call_openai(prompt)
     return {"test_result": _parse_response(response_text, state["pr"].diff)}

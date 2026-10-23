@@ -16,6 +16,8 @@ The API runs on Render as a Docker service. The frontend runs on Vercel.
 | `REVIEW_RATE_LIMIT_MAX_CALLS` | no | Max `/review` calls per window. Default `20` |
 | `REVIEW_RATE_LIMIT_WINDOW_SECONDS` | no | Window length. Default `3600` |
 
+The `reviews` table also holds the review cache (`record`, `pipeline_version`). **Run the `alter table reviews ...` statements in `supabase/schema.sql` before deploying a version that writes them**; until then review inserts fail with a logged warning and nothing is cached or recorded.
+
 Without Supabase, `POST /review` and `POST /ingest` return `5xx`, because background jobs have nowhere else to live. The CLI works without it.
 
 `ALLOWED_ORIGINS` is matched exactly, apart from a trailing slash. Vercel gives every deployment a unique URL, so list the stable branch URL (`<project>-git-<branch>-<team>.vercel.app`) rather than a per-deploy one.

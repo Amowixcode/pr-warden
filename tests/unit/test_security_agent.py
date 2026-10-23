@@ -351,10 +351,10 @@ def test_parse_response_drops_issue_with_fabricated_evidence() -> None:
     assert result.issues == []
 
 
-def test_parse_response_downgrades_verdict_when_all_issues_fail_verification() -> None:
+def test_parse_response_approves_when_all_issues_fail_verification() -> None:
     """Regression test for issue #124: the model sets REQUEST_CHANGES before evidence
     verification runs, so a REQUEST_CHANGES verdict backed only by fabricated evidence must be
-    downgraded to COMMENT once every issue is dropped — never surfaced with an empty issues list.
+    APPROVE once every issue is dropped — never surfaced with an empty issues list.
     """
     raw = json.dumps(
         {
@@ -367,8 +367,11 @@ def test_parse_response_downgrades_verdict_when_all_issues_fail_verification() -
         }
     )
     result = _parse_response(raw, _DEFAULT_DIFF)
-    assert result.verdict == "COMMENT"
+    assert result.verdict == "APPROVE"
     assert result.issues == []
+
+    assert len(result.dropped_issues) == 1
+    assert result.dropped_issues[0].reason == "not_in_diff"
 
 
 def test_parse_response_keeps_issue_with_verified_evidence() -> None:

@@ -18,6 +18,14 @@ class IngestRequest(BaseModel):
     job_id: uuid.UUID
 
 
+class DroppedIssueModel(BaseModel):
+    model_config = {"from_attributes": True}
+
+    issue: str
+    evidence: str
+    reason: str
+
+
 class AgentResultModel(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -25,6 +33,7 @@ class AgentResultModel(BaseModel):
     verdict: str
     issues: list[str]
     suggestions: list[str]
+    dropped_issues: list[DroppedIssueModel] = []
 
 
 class CheckResultModel(BaseModel):

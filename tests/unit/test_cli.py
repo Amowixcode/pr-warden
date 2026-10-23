@@ -321,7 +321,13 @@ def test_review_json_flag_outputs_expected_shape(monkeypatch: pytest.MonkeyPatch
     assert data["issues"] == []
     assert data["suggestions"] == ["Add tests"]
     for key in ("security_result", "quality_result", "test_result"):
-        assert set(data[key].keys()) == {"summary", "verdict", "issues", "suggestions"}
+        assert set(data[key].keys()) == {
+            "summary",
+            "verdict",
+            "issues",
+            "suggestions",
+            "dropped_issues",
+        }
     assert data["security_result"]["summary"] == "No secrets found"
 
 
@@ -688,3 +694,33 @@ def test_parse_repo_valid() -> None:
 def test_parse_repo_invalid(bad: str) -> None:
     with pytest.raises(typer.BadParameter):
         _parse_repo(bad)
+
+
+def test_review_prints_nothing_new_status_and_not_reviewed_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock = AsyncMock(
+        return_value=ReviewResult(
+            pr_number=7,
+            summary="Nothing new to review since abc1234.",
+            verdict="APPROVE",
+            issues=[],
+            suggestions=[],
+            security_result=_agent_result(),
+            quality_result=_agent_result(),
+            test_result=_agent_result(),
+            incremental=True,
+            prior_verdict="APPROVE",
+            prior_head_sha="abc1234def",
+            status="nothing_new",
+            not_reviewed=["logo.png"],
+        )
+    )
+    monkeypatch.setattr("core.review_service.review_pr", mock)
+
+    result = runner.invoke(app, ["review", "octocat/Hello-World", "7"])
+
+    assert result.exit_code == 0
+    assert "Nothing new to review since abc1234." in result.stdout
+    assert "No agents were run" in result.stdout
+    assert "Not reviewed: logo.png" in result.stdout

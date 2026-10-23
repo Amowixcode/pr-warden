@@ -6,7 +6,7 @@ from datetime import datetime
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import NodeWithScore
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from gh.pr_fetcher import PRData
 from gh.repo_fetcher import IssueData
@@ -24,6 +24,7 @@ class PersistedAgentResult(BaseModel):
     verdict: str
     issues: list[str]
     suggestions: list[str]
+    dropped_issues: list[dict[str, str]] = Field(default_factory=list)
 
 
 class ReviewRecord(BaseModel):
@@ -41,6 +42,7 @@ class ReviewRecord(BaseModel):
     quality_result: PersistedAgentResult
     test_result: PersistedAgentResult
     reviewed_at: datetime
+    pipeline_version: str = ""
 
 
 @dataclass

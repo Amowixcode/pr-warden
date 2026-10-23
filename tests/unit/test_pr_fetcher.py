@@ -341,10 +341,11 @@ async def test_fetch_diff_since_maps_comparison_files_into_diff() -> None:
     mock_repo.compare.return_value = _make_mock_comparison([changed])
     client = _make_mock_client_with_repo(mock_repo)
 
-    result = await fetch_diff_since(client, "o", "r", "base-sha", "head-sha")
+    result, skipped = await fetch_diff_since(client, "o", "r", "base-sha", "head-sha")
 
     assert "diff --git a/src/new_thing.py b/src/new_thing.py" in result
     assert "+def new_thing():" in result
+    assert skipped == []
     mock_repo.compare.assert_called_once_with("base-sha", "head-sha")
 
 
@@ -353,9 +354,24 @@ async def test_fetch_diff_since_empty_comparison_yields_empty_diff() -> None:
     mock_repo.compare.return_value = _make_mock_comparison([])
     client = _make_mock_client_with_repo(mock_repo)
 
-    result = await fetch_diff_since(client, "o", "r", "same-sha", "same-sha")
+    result, skipped = await fetch_diff_since(client, "o", "r", "same-sha", "same-sha")
 
     assert result == ""
+    assert skipped == []
+
+
+async def test_fetch_diff_since_lists_files_without_a_patch() -> None:
+    binary = _make_mock_file(
+        filename="logo.png", status="added", additions=0, deletions=0, patch=None
+    )
+    mock_repo = MagicMock()
+    mock_repo.compare.return_value = _make_mock_comparison([binary])
+    client = _make_mock_client_with_repo(mock_repo)
+
+    result, skipped = await fetch_diff_since(client, "o", "r", "base-sha", "head-sha")
+
+    assert result == ""
+    assert skipped == ["logo.png"]
 
 
 # ---------------------------------------------------------------------------
